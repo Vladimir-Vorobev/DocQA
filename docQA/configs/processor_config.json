@@ -1,0 +1,10 @@
+{
+    "model_name": "facebook/wmt19-ru-en",
+    "device": "cuda",
+    "retriever_sep": "\n",
+    "ranker_sep": "\n",
+    "replace_retriever_sep": true,
+    "native_lang": "ru",
+    "docs_file_path": "model_docs.json",
+    "doc_encoding": "utf-16"
+}

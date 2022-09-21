@@ -1,0 +1,15 @@
+{
+    "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+    "model_path": "",
+    "lr": 1e-5,
+    "is_training": false,
+    "normalize": true,
+    "max_grad_norm": 1,
+    "device": "cuda",
+    "epochs": 30,
+    "training_batch_size": 16,
+    "display_progress_bar": true,
+    "cossim_scale": 20,
+    "evaluation_batch_size": 16,
+    "max_length": 256
+}
