@@ -103,8 +103,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
         val_top_3_error_history = []
         val_top_1_error_max = 10
 
-        for epoch in tqdm(range(self.config.epochs), desc=f'Fine tuning {self.name}',
-                          display=self.config.display_progress_bar):
+        for epoch in tqdm(range(self.config.epochs), desc=f'Fine tuning {self.name}'):
             train_loss_sum, train_top_1_error, train_top_3_error = self.epoch_step(train_loader, pipe=pipe)
 
             with torch.no_grad():
@@ -136,7 +135,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
                 self.best_model = self.model
                 val_top_1_error_max = val_top_1_error
 
-            with open(f'/content/drive/MyDrive/Sber DPO/{self.name}_fine_tune_results.json', 'w') as w:
+            with open(f'docs/{self.name}_fine_tune_results.json', 'w') as w:
                 w.write(json.dumps({
                     'train_loss_history': train_loss_history,
                     'val_loss_history': val_loss_history,

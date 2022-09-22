@@ -7,4 +7,10 @@ class PipeOutputElement(TypedDict):
     modified_input: str
 
 
+class TrainDataItem(TypedDict):
+    question: str
+    context: str
+
+
 PipeOutput = Union[List[PipeOutputElement], PipeOutputElement]
+TrainData = List[TrainDataItem]

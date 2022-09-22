@@ -1,5 +1,5 @@
 from docQA.nodes.file_preprocessor import DocProcessor
-from docQA.typing_schemas import PipeOutput
+from docQA.typing_schemas import PipeOutput, TrainData
 from docQA.errors import PipelineError
 
 from typing import List, Any
@@ -20,14 +20,14 @@ class Pipeline:
             raise PipelineError('You have to have at least one node to call a pipeline.')
 
         for node_name in self.nodes:
-            node = self.nodes[node_name]
+            node = self.nodes[node_name]['node']
             data = node(data) if node_name not in kwargs else node(data, *kwargs[node_name])
 
         data = self.modify_output(data)
 
         return data
 
-    def add_node(self, node: Any, name: str, **kwargs):
+    def add_node(self, node: Any, name: str, is_technical: bool = False, **kwargs):
         assert name not in self.nodes, PipelineError(
             f'A node with a name {name} ({node.pipe_type} pipeline type) is already exists in this pipeline.'
         )
@@ -53,10 +53,20 @@ class Pipeline:
             else:
                 kwargs['texts'] = self.preprocessor.ranker_docs_native
 
-        self.nodes[name] = node(**kwargs)
+        self.nodes[name] = {
+            'node': node(**kwargs),
+            'is_technical': is_technical
+        }
 
-    def fit(self, data: Any):
-        raise PipelineError(f'Fit method is not supported in pipelines with this type.')
+    def fit(self, data: TrainData):
+        for node_name in self.nodes:
+            item = self.nodes[node_name]
+            node = item['node']
+            is_technical = item['is_technical']
+            if not is_technical:
+                node.config.is_training = True
+                node.fine_tune(data)
+                node.config.is_training = False
 
     def modify_output(self, data):
         if isinstance(data, dict):

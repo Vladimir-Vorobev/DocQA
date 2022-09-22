@@ -7,7 +7,7 @@
     "max_grad_norm": 1,
     "device": "cuda",
     "epochs": 30,
-    "training_batch_size": 16,
+    "training_batch_size": 64,
     "display_progress_bar": true,
     "cossim_scale": 20,
     "evaluation_batch_size": 16,
