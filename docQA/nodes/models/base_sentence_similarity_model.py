@@ -1,6 +1,6 @@
 from docQA.configs import ConfigParser
 from docQA.utils.torch import BaseDataset
-from docQA.utils.visualization import fine_tune_plot
+from docQA.utils.visualization import visualize_fitting
 from docQA.utils import seed_worker
 from docQA.errors import DeviceError, SentenceEmbeddingsModelError
 
@@ -78,8 +78,10 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
         return embeddings.cpu()
 
-    def fine_tune(self, train_data, val_size=0.2, pipe=None):
-        assert self.config.is_training, SentenceEmbeddingsModelError('training')
+    def fit(self, train_data, val_size=0.2, pipe=None):
+        # Зачем это вообще было
+        # assert self.config.is_training, SentenceEmbeddingsModelError('training')
+        self.config.is_training = True
         self.model.train()
 
         dataset = BaseDataset(train_data)
@@ -122,12 +124,12 @@ class BaseSentenceSimilarityEmbeddingsModel:
             val_top_1_error_history.append(val_top_1_error)
             train_top_3_error_history.append(train_top_3_error)
             val_top_3_error_history.append(val_top_3_error)
-            fine_tune_plot({'train loss': train_loss_history, 'val loss': val_loss_history}, self.name,
+            visualize_fitting({'train loss': train_loss_history, 'val loss': val_loss_history}, self.name,
                                  x_label='epoch', y_label='loss')
-            fine_tune_plot(
+            visualize_fitting(
                 {'train top-1 error': train_top_1_error_history, 'val top-1 error': val_top_1_error_history}, self.name,
                 metric='top-1 error', x_label='epoch', y_label='top-1 error')
-            fine_tune_plot(
+            visualize_fitting(
                 {'train top-3 error': train_top_3_error_history, 'val top-3 error': val_top_3_error_history}, self.name,
                 metric='top-3 error', x_label='epoch', y_label='top-3 error')
 
@@ -135,7 +137,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
                 self.best_model = self.model
                 val_top_1_error_max = val_top_1_error
 
-            with open(f'docs/{self.name}_fine_tune_results.json', 'w') as w:
+            with open(f'docs/{self.name}_fitting_results.json', 'w') as w:
                 w.write(json.dumps({
                     'train_loss_history': train_loss_history,
                     'val_loss_history': val_loss_history,
@@ -146,6 +148,9 @@ class BaseSentenceSimilarityEmbeddingsModel:
                 }))
 
         self.model, self.best_model = self.best_model, None
+        self.config.is_training = False
+        self.model.eval()
+
         return train_loss_history, val_loss_history
 
     def epoch_step(self, loader, train=True, pipe=None):

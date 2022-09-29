@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def fine_tune_plot(data, model_name, metric='loss', x_label='', y_label=''):
+def visualize_fitting(data, model_name, metric='loss', x_label='', y_label=''):
     dataframe = pd.DataFrame(data)
     plt.ioff()
     fig, ax = plt.subplots()
@@ -12,8 +12,3 @@ def fine_tune_plot(data, model_name, metric='loss', x_label='', y_label=''):
     ax.set(xlabel=x_label, ylabel=y_label)
     fig.savefig(f'{model_name}_training_{metric}.png')
     plt.close()
-
-
-__all__ = [
-    'fine_tune_plot'
-]

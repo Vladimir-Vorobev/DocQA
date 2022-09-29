@@ -5,8 +5,8 @@ from docQA import seed
 
 from sklearn.model_selection import GridSearchCV
 import torch
-import catboost_pipe
 import pandas as pd
+import catboost
 
 documents = [
     r'C:\Users\Вова\Downloads\Telegram Desktop\Федеральный_закон_от_27_07_2006_N_152_ФЗ_О_персональных_данных_—.txt',

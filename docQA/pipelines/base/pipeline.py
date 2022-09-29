@@ -15,15 +15,19 @@ class Pipeline:
         self.nodes = {}
         self.pipe_types = {}
 
-    def __call__(self, data: Any, **kwargs) -> PipeOutput:
+    def __call__(
+            self,
+            data: Any,
+            return_translated: bool = False,
+            **kwargs
+    ) -> PipeOutput:
         if not self.nodes:
             raise PipelineError('You have to have at least one node to call a pipeline.')
 
         for node_name in self.nodes:
-            node = self.nodes[node_name]['node']
-            data = node(data) if node_name not in kwargs else node(data, *kwargs[node_name])
+            data = self._call_node(node_name, data, **kwargs)
 
-        data = self.modify_output(data)
+        data = self.modify_output(data, return_translated)
 
         return data
 
@@ -59,16 +63,25 @@ class Pipeline:
         }
 
     def fit(self, data: TrainData):
+        previous_outputs = [item['question'] for item in data]
+
         for node_name in self.nodes:
             item = self.nodes[node_name]
             node = item['node']
             is_technical = item['is_technical']
-            if not is_technical:
-                node.config.is_training = True
-                node.fine_tune(data)
-                node.config.is_training = False
 
-    def modify_output(self, data):
+            if not is_technical:
+                if node.pipe_type in ['retriever', 'ranker']:
+                    node.fit(data)
+
+                elif node.pipe_type == 'catboost':
+                    node.fit(
+                        self.modify_output(previous_outputs, return_translated=True), previous_outputs=previous_outputs
+                    )
+
+            previous_outputs = self._call_node(node_name, previous_outputs)
+
+    def modify_output(self, data, return_translated=False):
         if isinstance(data, dict):
             return data
 
@@ -77,8 +90,16 @@ class Pipeline:
                 answer = item['output']['answers'][answer_index]
                 answer['total_score'] /= answer['weights_sum'] if answer['weights_sum'] else 1
                 new_answer = {'answer': self.preprocessor.retriever_docs_native[answer['index']]}
-                del answer['index'], answer['weights_sum']
+
+                if return_translated and self.preprocessor.retriever_docs_translated:
+                    new_answer['translated_answer'] = self.preprocessor.retriever_docs_translated[answer['index']]
+
+                # del answer['index'], answer['weights_sum']
                 new_answer.update(answer)
                 item['output']['answers'][answer_index] = new_answer
 
         return data
+
+    def _call_node(self, node_name, data, **kwargs):
+        node = self.nodes[node_name]['node']
+        return node(data) if node_name not in kwargs else node(data, *kwargs[node_name])
