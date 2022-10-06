@@ -36,8 +36,11 @@ class CatboostPipeline(BasePipeline):
 
             for answer_index in range(len(answers)):
                 answer = answers[answer_index]
+                input_data = answer['scores']
+                input_data['answer'] = answer['answer']
+                input_data['index'] = answer_index + 1
 
-                score = self.model.predict_proba[1] * self.weight
+                score = self.model.predict_proba(input_data)[1] * self.weight
 
                 answer['scores'][f'catboost_{self.number}_proba'] = score
                 answer['total_score'] += score
@@ -54,9 +57,10 @@ class CatboostPipeline(BasePipeline):
             previous_outputs,
             val_size=0.3,
     ):
-        assert data and data[0]['output']['answers'] and data[0]['output']['answers'][0]['scores'], PipelineError(
-            'To use CatboostPipeline you should have non-technical nodes in Pipeline before this pipeline.'
-        )
+        assert previous_outputs and previous_outputs[0]['output']['answers'] \
+               and previous_outputs[0]['output']['answers'][0]['scores'], PipelineError(
+                   'To use CatboostPipeline you should have non-technical nodes in Pipeline before this pipeline.'
+               )
 
         for output_item, data_item in zip(previous_outputs, data):
             output_item['context'] = data_item['native_context']
@@ -81,7 +85,7 @@ class CatboostPipeline(BasePipeline):
         for item in df:
             question = item['modified_input']
             context = item['context']
-            answers = item['answers']
+            answers = item['output']['answers']
             for index, result in enumerate(answers, start=1):
                 answer = result['answer']
                 translated_answer = result['translated_answer'] if 'translated_answer' in result else answer

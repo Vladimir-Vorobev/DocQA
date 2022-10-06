@@ -22,7 +22,7 @@ import pandas as pd
 pipe = Pipeline(['docs/Федеральный-закон-от-27.07.2006-N-152-ФЗ-О-персональных-данных.txt'])
 pipe.add_node(TranslatorPipeline, name='translator', is_technical=True, model_name='facebook/wmt19-ru-en')
 pipe.add_node(RetrieverPipeline, name='retriever')
-# pipe.add_node(RankerPipeline, name='ranker')
+pipe.add_node(RankerPipeline, name='ranker')
 pipe.add_node(CatboostPipeline, name='catboost')
 
 df = pd.read_csv('docs/generated_questions_2.1.csv')

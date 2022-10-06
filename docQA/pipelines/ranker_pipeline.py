@@ -34,8 +34,9 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
 
         for index in range(len(data)):
             answers = data[index]['output']['answers']
+            # will lead to a bug [data[index]['modified_input'], *[self.texts[answer['index']][0] for answer in answers
             embeddings = self.encode(
-                [data[index]['modified_input'], *[self.texts[answer['index']][0] for answer in answers]]
+                [data[index]['modified_input'], *[self.texts[answer['index']][0] for answer in answers if self.texts[answer['index']]]]
             )
 
             for answer_index, embedding in zip(range(len(answers)), embeddings[1:]):
