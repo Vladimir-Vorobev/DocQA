@@ -1,5 +1,7 @@
 {
     "model_name": "facebook/wmt19-ru-en",
+    "model_path": "",
+    "local_files_only": true,
     "device": "cuda",
     "retriever_sep": "\n",
     "ranker_sep": "\n",

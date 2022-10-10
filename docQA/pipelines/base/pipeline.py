@@ -19,15 +19,18 @@ class Pipeline:
             self,
             data: Any,
             return_translated: bool = False,
+            threshold: float = 0.3,
             **kwargs
     ) -> PipeOutput:
         if not self.nodes:
             raise PipelineError('You have to have at least one node to call a pipeline.')
-
         for node_name in self.nodes:
             data = self._call_node(node_name, data, **kwargs)
 
         data = self.modify_output(data, return_translated)
+
+        for item in data:
+            item['output']['answers'] = [answer for answer in item['output']['answers'] if answer['total_score'] > threshold]
 
         return data
 
@@ -45,17 +48,20 @@ class Pipeline:
         if 'number' not in kwargs:
             kwargs['number'] = self.pipe_types[pipe_type] - 1
 
-        if pipe_type == 'retriever':
+        if pipe_type in ['retriever', 'catboost']:
             if self.preprocessor.retriever_docs_translated:
                 kwargs['texts'] = self.preprocessor.retriever_docs_translated
             else:
                 kwargs['texts'] = self.preprocessor.retriever_docs_native
 
-        elif pipe_type == 'ranker':
+        if pipe_type == 'ranker':
             if self.preprocessor.ranker_docs_translated:
                 kwargs['texts'] = self.preprocessor.ranker_docs_translated
             else:
                 kwargs['texts'] = self.preprocessor.ranker_docs_native
+
+        if pipe_type == 'catboost':
+            kwargs['native_texts'] = self.preprocessor.retriever_docs_native
 
         self.nodes[name] = {
             'node': node(**kwargs),
@@ -76,7 +82,7 @@ class Pipeline:
 
                 elif node.pipe_type == 'catboost':
                     node.fit(
-                        data, previous_outputs=self.modify_output(previous_outputs, return_translated=True)
+                        data, previous_outputs=previous_outputs
                     )
 
             previous_outputs = self._call_node(node_name, previous_outputs)
@@ -94,7 +100,7 @@ class Pipeline:
                 if return_translated and self.preprocessor.retriever_docs_translated:
                     new_answer['translated_answer'] = self.preprocessor.retriever_docs_translated[answer['index']]
 
-                # del answer['index'], answer['weights_sum']
+                del answer['index'], answer['weights_sum']
                 new_answer.update(answer)
                 item['output']['answers'][answer_index] = new_answer
 

@@ -3,6 +3,7 @@ from docQA.utils.torch import BaseDataset
 from docQA.utils.visualization import visualize_fitting
 from docQA.utils import seed_worker
 from docQA.errors import DeviceError, SentenceEmbeddingsModelError
+from docQA import seed
 
 import joblib
 import torch
@@ -31,19 +32,23 @@ class BaseSentenceSimilarityEmbeddingsModel:
         self._config = ConfigParser(config_path)
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
-        self.best_model = None
+
         self.optimizer = optimizer
         self.loss_func = loss_func
 
         if self.config.model_path:
             self.model = joblib.load(self.config.model_path)
         else:
-            self.model = AutoModel.from_pretrained(self.config.model_name).to(self.config.device)
+            self.model = AutoModel.from_pretrained(
+                self.config.model_name, local_files_only=self.config.local_files_only
+            ).to(self.config.device)
 
         if not self.optimizer:
             self.optimizer = AdamW(self.model.parameters(), self.config.lr)
         if not self.loss_func:
             self.loss_func = torch.nn.CrossEntropyLoss()
+
+        self.best_model = self.model
 
     @property
     def config(self):
@@ -88,13 +93,13 @@ class BaseSentenceSimilarityEmbeddingsModel:
         train_length = int(len(dataset) * (1 - val_size))
         val_length = len(dataset) - train_length
         train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_length, val_length],
-                                                                   generator=torch.Generator().manual_seed(42))
+                                                                   generator=torch.Generator().manual_seed(seed))
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config.training_batch_size,
-                                                   shuffle=True, generator=torch.Generator().manual_seed(42),
+                                                   shuffle=True, generator=torch.Generator().manual_seed(seed),
                                                    worker_init_fn=seed_worker)
         val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config.training_batch_size, shuffle=True,
-                                                 generator=torch.Generator().manual_seed(42),
+                                                 generator=torch.Generator().manual_seed(seed),
                                                  worker_init_fn=seed_worker)
 
         train_loss_history = []

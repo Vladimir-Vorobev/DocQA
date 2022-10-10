@@ -10,6 +10,7 @@ class PipeOutputElement(TypedDict):
 class TrainDataItem(TypedDict):
     question: str
     context: str
+    native_context: str
 
 
 PipeOutput = Union[List[PipeOutputElement], PipeOutputElement]

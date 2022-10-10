@@ -27,10 +27,13 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
     def __call__(
             self,
             data: Union[str, List[str]],
-            ranker_n: int = 10
+            num: int = 10
     ) -> PipeOutput:
         data = self.standardize_input(data)
         data = self.add_standard_answers(data, len(self.texts))
+
+        if num == -1:
+            num = len(data)
 
         for index in range(len(data)):
             answers = data[index]['output']['answers']
@@ -49,6 +52,6 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
                 answer['weights_sum'] += self.weight
 
             data[index]['output']['answers'] = \
-                sorted(answers, key=lambda x: x['total_score'], reverse=True)[:ranker_n]
+                sorted(answers, key=lambda x: x['total_score'], reverse=True)[:num]
 
         return data

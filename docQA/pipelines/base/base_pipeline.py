@@ -2,6 +2,7 @@ from docQA.typing_schemas import PipeOutput
 from docQA.errors import PipelineError
 
 from typing import List, Union, Any
+from copy import deepcopy
 
 
 class BasePipeline:
@@ -31,6 +32,6 @@ class BasePipeline:
         answers = [{'index': index, 'total_score': 0, 'weights_sum': 0, 'scores': {}} for index in range(answer_len)]
 
         for index in range(len(data)):
-            data[index]['output']['answers'] = answers
+            data[index]['output']['answers'] = deepcopy(answers)
 
         return data

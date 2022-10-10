@@ -19,6 +19,7 @@ torch.backends.cudnn.benchmark = False
 from docQA.pipelines import Pipeline, TranslatorPipeline, RetrieverPipeline, RankerPipeline, CatboostPipeline
 import pandas as pd
 
+
 pipe = Pipeline(['docs/Федеральный-закон-от-27.07.2006-N-152-ФЗ-О-персональных-данных.txt'])
 pipe.add_node(TranslatorPipeline, name='translator', is_technical=True, model_name='facebook/wmt19-ru-en')
 pipe.add_node(RetrieverPipeline, name='retriever')

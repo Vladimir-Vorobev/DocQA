@@ -15,14 +15,18 @@ class CatboostPipeline(BasePipeline):
 
     def __init__(
             self,
+            texts: List[str],
+            native_texts: List[str],
             weight: float = 1.0,
             number: int = 0,
             config_path: str = 'docQA/configs/catboost_config.json'
     ):
         BasePipeline.__init__(self)
+        self.texts = texts
+        self.native_texts = native_texts
         self.weight = weight
         self.number = number
-        self.model = catboost.CatBoostClassifier(random_state=seed)
+        self.model = catboost.CatBoostClassifier(iterations=250, random_state=seed)
 
     def __call__(
             self,
@@ -33,14 +37,18 @@ class CatboostPipeline(BasePipeline):
 
         for index in range(len(data)):
             answers = data[index]['output']['answers']
+            question = data[index]['modified_input']
 
             for answer_index in range(len(answers)):
                 answer = answers[answer_index]
-                input_data = answer['scores']
-                input_data['answer'] = answer['answer']
-                input_data['index'] = answer_index + 1
+                input_data = {
+                    'question': question,
+                    'answer': self.texts[answer['index']],
+                    **answer['scores'],
+                    'index': answer_index
+                }
 
-                score = self.model.predict_proba(input_data)[1] * self.weight
+                score = self.model.predict_proba(pd.DataFrame(input_data, index=[0]))[0][1] * self.weight
 
                 answer['scores'][f'catboost_{self.number}_proba'] = score
                 answer['total_score'] += score
@@ -61,9 +69,11 @@ class CatboostPipeline(BasePipeline):
                and previous_outputs[0]['output']['answers'][0]['scores'], PipelineError(
                    'To use CatboostPipeline you should have non-technical nodes in Pipeline before this pipeline.'
                )
+        data = {item['question']: item['native_context'] for item in data}
 
-        for output_item, data_item in zip(previous_outputs, data):
-            output_item['context'] = data_item['native_context']
+        for output_item in previous_outputs:
+            for answer in output_item['output']['answers']:
+                answer['is_correct'] = 1 if self.native_texts[answer['index']] == data[output_item['input']] else 0
 
         dataset = BaseDataset(previous_outputs)
         train_length = int(len(dataset) * (1 - val_size))
@@ -78,29 +88,25 @@ class CatboostPipeline(BasePipeline):
 
         self.model.fit(X_train, y_train, text_features=['question', 'answer'], silent=True)
 
-    @staticmethod
-    def _create_dataset(df):
+    def _create_dataset(self, df):
         dataset = []
 
         for item in df:
             question = item['modified_input']
-            context = item['context']
             answers = item['output']['answers']
-            for index, result in enumerate(answers, start=1):
-                answer = result['answer']
-                translated_answer = result['translated_answer'] if 'translated_answer' in result else answer
-                scores = result['scores']
-                is_correct = 1 if answer == context else 0
+            for index, answer in enumerate(answers):
+                answer_index = answer['index']
+                translated_answer = self.texts[answer_index]
+                scores = answer['scores']
+                is_correct = answer['is_correct']
 
                 new_train_item = {
                     'question': question,
                     'answer': translated_answer,
+                    **scores,
                     'index': index,
                     'is_correct': is_correct
                 }
-
-                for score in scores:
-                    new_train_item[score] = scores[score]
 
                 dataset.append(new_train_item)
 

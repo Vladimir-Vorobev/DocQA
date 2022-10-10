@@ -28,10 +28,14 @@ class RetrieverPipeline(BasePipeline, RetrieverEmbeddingsModel):
     def __call__(
             self,
             data: Union[str, List[str]],
-            retriever_n: int = 30
+            num: int = 30
     ) -> PipeOutput:
         data = self.standardize_input(data)
         data = self.add_standard_answers(data, len(self.texts))
+
+        if num == -1:
+            num = len(data)
+
         data_embeddings = self.encode([item['modified_input'] for item in data])
 
         for index, embedding in zip(range(len(data)), data_embeddings):
@@ -46,6 +50,6 @@ class RetrieverPipeline(BasePipeline, RetrieverEmbeddingsModel):
                 answer['weights_sum'] += self.weight
 
             data[index]['output']['answers'] = \
-                sorted(answers, key=lambda x: x['total_score'], reverse=True)[:retriever_n]
+                sorted(answers, key=lambda x: x['total_score'], reverse=True)[:num]
 
         return data
