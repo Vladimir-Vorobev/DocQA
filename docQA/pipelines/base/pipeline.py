@@ -2,7 +2,7 @@ from docQA.nodes.file_preprocessor import DocProcessor
 from docQA.typing_schemas import PipeOutput, TrainData
 from docQA.errors import PipelineError
 
-from typing import List, Any
+from typing import Union, List, Any
 
 
 class Pipeline:
@@ -20,19 +20,20 @@ class Pipeline:
             data: Any,
             return_translated: bool = False,
             threshold: float = 0.3,
+            return_output: bool = True,
             **kwargs
     ) -> PipeOutput:
         if not self.nodes:
             raise PipelineError('You have to have at least one node to call a pipeline.')
         for node_name in self.nodes:
             data = self._call_node(node_name, data, **kwargs)
+        if return_output:
+            data = self.modify_output(data, return_translated)
 
-        data = self.modify_output(data, return_translated)
+            for item in data:
+                item['output']['answers'] = [answer for answer in item['output']['answers'] if answer['total_score'] > threshold]
 
-        for item in data:
-            item['output']['answers'] = [answer for answer in item['output']['answers'] if answer['total_score'] > threshold]
-
-        return data
+            return data
 
     def add_node(self, node: Any, name: str, is_technical: bool = False, **kwargs):
         assert name not in self.nodes, PipelineError(
@@ -68,7 +69,10 @@ class Pipeline:
             'is_technical': is_technical
         }
 
-    def fit(self, data: TrainData):
+    def fit(self, data: TrainData, top_n_errors: Union[int, List[int]] = [1, 3, 5, 10], evaluate: bool = True):
+        if not evaluate:
+            top_n_errors = []
+
         previous_outputs = [item['question'] for item in data]
 
         for node_name in self.nodes:
@@ -78,7 +82,17 @@ class Pipeline:
 
             if not is_technical:
                 if node.pipe_type in ['retriever', 'ranker']:
-                    node.fit(data)
+                    fit_pipe = Pipeline([]) if evaluate else None
+
+                    if fit_pipe:
+                        fit_pipe.preprocessor = self.preprocessor
+
+                        for fit_node_name in self.nodes:
+                            fit_pipe.nodes[fit_node_name] = self.nodes[fit_node_name]
+                            if fit_node_name == node_name:
+                                break
+
+                    node.fit(data, top_n_errors=top_n_errors, pipe=fit_pipe)
 
                 elif node.pipe_type == 'catboost':
                     node.fit(

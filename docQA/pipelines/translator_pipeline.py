@@ -12,11 +12,13 @@ class TranslatorPipeline(BasePipeline, Translator):
             self,
             model_name: str,
             device: str = 'cuda',
-            number: int = 0
+            number: int = 0,
+            translate_text: bool = True
     ):
         BasePipeline.__init__(self)
         Translator.__init__(self, model_name, device)
         self.number = number
+        self.translate_text = translate_text
 
     def __call__(
             self,
@@ -26,6 +28,8 @@ class TranslatorPipeline(BasePipeline, Translator):
 
         if standardized:
             data = self.standardize_input(data)
+        elif isinstance(data, str):
+            data = [data]
 
         for index in range(len(data)):
             if standardized:
@@ -34,14 +38,3 @@ class TranslatorPipeline(BasePipeline, Translator):
                 data[index] = self._translate(data[index])
 
         return data
-
-
-# from docQA.pipelines.base import Pipeline
-# ru_en_trans = TranslatorPipeline('facebook/wmt19-ru-en')
-# en_ru_trans = TranslatorPipeline('facebook/wmt19-en-ru')
-#
-# pipe = Pipeline()
-# pipe.add_node(ru_en_trans, 'ru_en_translator')
-# pipe.add_node(en_ru_trans, 'en_ru_translator')
-#
-# print(pipe(['Я тебя знаю!', 'Что происходит?!', 'Я пошел домой!']))

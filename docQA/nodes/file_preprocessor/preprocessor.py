@@ -51,16 +51,17 @@ class DocProcessor:
         self.retriever_docs_native.extend(
             [doc.replace('\n', '') for doc in docs if doc != '\n']
         )
-        # self._retriever_docs_native = [
-        #     doc.replace('\n', '') for doc in tqdm(self._retriever_docs_native, ascii=True, desc='Cleaning docs')
-        # ]
+
         self.ranker_docs_native.extend(
             [self._create_ranker_doc(doc) for doc in tqdm(docs, ascii=True, desc='Grouping docs by paragraphs')]
         )
 
         if self.translator:
             self.retriever_docs_translated.extend(
-                [self.translator._translate(doc) for doc in tqdm(docs, ascii=True, desc='Translating docs paragraphs')]
+                [doc for doc in tqdm(
+                    self.translator._translate('\n'.join(docs)).split('\n'),
+                    ascii=True, desc='Translating docs paragraphs'
+                )]
             )
             self.ranker_docs_translated.extend(
                 [self._create_ranker_doc(doc) for doc in

@@ -1,11 +1,24 @@
-from docQA.pipelines import pipeline
 from docQA.nodes.models import QuestionGenerator
+from docQA.pipelines.base import BasePipeline
 
 
-documents = [
-    r'C:\Users\Вова\Downloads\Telegram Desktop\Федеральный_закон_от_27_07_2006_N_152_ФЗ_О_персональных_данных_—.txt',
-]
+class QgPipeline(BasePipeline, QuestionGenerator):
+    pipe_type = 'qg'
 
-pipe = pipeline(documents)
-qg_pipe = QuestionGenerator(cdqa_pipe=pipe, cuda=True)
-qg_pipe(path_to_save='test.csv')
+    def __init__(
+            self,
+            device: str = 'cuda',
+            number: int = 0,
+            path_to_save: str = '',
+            cdqa_pipe=None
+    ):
+        self.path_to_save = path_to_save
+        BasePipeline.__init__(self)
+        QuestionGenerator.__init__(self, cdqa_pipe=cdqa_pipe, device=device)
+
+    def __call__(
+            self,
+            path_to_save: str,
+            standardized: bool = True
+    ):
+        self._generate_questions(path_to_save=path_to_save)

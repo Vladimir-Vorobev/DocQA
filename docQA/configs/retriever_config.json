@@ -1,16 +1,16 @@
 {
     "model_name": "sentence-transformers/msmarco-distilbert-multilingual-en-de-v2-tmp-trained-scratch",
     "model_path": "",
-    "local_files_only": true,
+    "local_files_only": false,
     "lr": 1e-5,
     "is_training": false,
     "normalize": true,
     "max_grad_norm": 1,
     "device": "cuda",
-    "epochs": 5,
-    "training_batch_size": 64,
+    "epochs": 2,
+    "training_batch_size": 36,
     "display_progress_bar": true,
     "cossim_scale": 20,
-    "evaluation_batch_size": 32,
-    "max_length": 256
+    "evaluation_batch_size": 36,
+    "max_length": 512
 }

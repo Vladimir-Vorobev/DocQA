@@ -1,15 +1,15 @@
 from docQA.configs import ConfigParser
 from docQA.utils.torch import BaseDataset
 from docQA.utils.visualization import visualize_fitting
-from docQA.utils import seed_worker
+from docQA.utils import seed_worker, batch_to_device
 from docQA.errors import DeviceError, SentenceEmbeddingsModelError
+from docQA.metrics import top_n_qa_error
 from docQA import seed
 
 import joblib
 import torch
 import json
 
-import sentence_transformers.util as util
 from transformers import (
     AdamW,
     AutoModel,
@@ -35,6 +35,8 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
         self.optimizer = optimizer
         self.loss_func = loss_func
+
+        self.autocast_type = torch.float16
 
         if self.config.model_path:
             self.model = joblib.load(self.config.model_path)
@@ -83,101 +85,107 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
         return embeddings.cpu()
 
-    def fit(self, train_data, val_size=0.2, pipe=None):
-        # Зачем это вообще было
-        # assert self.config.is_training, SentenceEmbeddingsModelError('training')
+    def fit(self, train_data, val_size=0.2, top_n_errors=None, pipe=None):
+        if top_n_errors is None:
+            top_n_errors = {}
+
         self.config.is_training = True
         self.model.train()
 
         dataset = BaseDataset(train_data)
         train_length = int(len(dataset) * (1 - val_size))
         val_length = len(dataset) - train_length
-        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_length, val_length],
-                                                                   generator=torch.Generator().manual_seed(seed))
+        train_dataset, val_dataset = torch.utils.data.random_split(
+            dataset, [train_length, val_length], generator=torch.Generator().manual_seed(seed)
+        )
 
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config.training_batch_size,
-                                                   shuffle=True, generator=torch.Generator().manual_seed(seed),
-                                                   worker_init_fn=seed_worker)
-        val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.config.training_batch_size, shuffle=True,
-                                                 generator=torch.Generator().manual_seed(seed),
-                                                 worker_init_fn=seed_worker)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=self.config.training_batch_size,
+            shuffle=True, generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
+        )
+
+        val_loader = torch.utils.data.DataLoader(
+            val_dataset, batch_size=self.config.training_batch_size, shuffle=True,
+            generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
+        )
 
         train_loss_history = []
         val_loss_history = []
-        train_top_1_error_history = []
-        val_top_1_error_history = []
-        train_top_3_error_history = []
-        val_top_3_error_history = []
-        val_top_1_error_max = 10
+        train_top_n_errors_history = {n: [] for n in top_n_errors}
+        val_top_n_errors_history = {n: [] for n in top_n_errors}
 
         for epoch in tqdm(range(self.config.epochs), desc=f'Fine tuning {self.name}'):
-            train_loss_sum, train_top_1_error, train_top_3_error = self.epoch_step(train_loader, pipe=pipe)
+            train_loss_sum, train_top_n_errors = self.epoch_step(train_loader, top_n_errors=top_n_errors, pipe=pipe)
 
             with torch.no_grad():
-                val_loss_sum, val_top_1_error, val_top_3_error = self.epoch_step(val_loader, train=False, pipe=pipe)
+                val_loss_sum, val_top_n_errors = self.epoch_step(val_loader, top_n_errors=top_n_errors, train=False, pipe=pipe)
 
             train_loss_sum /= self.config.training_batch_size
             val_loss_sum /= self.config.training_batch_size
-            train_top_1_error /= train_length
-            val_top_1_error /= val_length
-            train_top_3_error /= train_length
-            val_top_3_error /= val_length
 
             train_loss_history.append(train_loss_sum)
             val_loss_history.append(val_loss_sum)
-            train_top_1_error_history.append(train_top_1_error)
-            val_top_1_error_history.append(val_top_1_error)
-            train_top_3_error_history.append(train_top_3_error)
-            val_top_3_error_history.append(val_top_3_error)
-            visualize_fitting({'train loss': train_loss_history, 'val loss': val_loss_history}, self.name,
-                                 x_label='epoch', y_label='loss')
-            visualize_fitting(
-                {'train top-1 error': train_top_1_error_history, 'val top-1 error': val_top_1_error_history}, self.name,
-                metric='top-1 error', x_label='epoch', y_label='top-1 error')
-            visualize_fitting(
-                {'train top-3 error': train_top_3_error_history, 'val top-3 error': val_top_3_error_history}, self.name,
-                metric='top-3 error', x_label='epoch', y_label='top-3 error')
 
-            if val_top_1_error <= val_top_1_error_max:
-                self.best_model = self.model
-                val_top_1_error_max = val_top_1_error
+            for n in top_n_errors:
+                train_top_n_errors_history[n].append(train_top_n_errors[n])
+                val_top_n_errors_history[n].append(val_top_n_errors[n])
+
+            visualize_fitting(
+                {
+                    'train loss': train_loss_history,
+                    'val loss': val_loss_history
+                }, self.name, x_label='epoch', y_label='loss'
+            )
+
+            for n in top_n_errors:
+                visualize_fitting(
+                    {
+                        f'train top-{n} error': train_top_n_errors_history[n],
+                        f'val top-{n} error': val_top_n_errors_history[n]
+                    }, self.name, metric=f'top-{n} error', x_label='epoch', y_label=f'top-{n} error'
+                )
+
+            # if val_top_1_error <= val_top_1_error_max:
+            #     self.best_model = self.model
+            #     val_top_1_error_max = val_top_1_error
 
             with open(f'docs/{self.name}_fitting_results.json', 'w') as w:
                 w.write(json.dumps({
                     'train_loss_history': train_loss_history,
                     'val_loss_history': val_loss_history,
-                    'train_top_1_error_history': train_top_1_error_history,
-                    'val_top_1_error_history': val_top_1_error_history,
-                    'train_top_3_error_history': train_top_3_error_history,
-                    'val_top_3_error_history': val_top_3_error_history,
+                    'train_top_n_errors_history': train_top_n_errors_history,
+                    'val_top_n_errors_history': val_top_n_errors_history,
                 }))
 
-        self.model, self.best_model = self.best_model, None
+        # self.model, self.best_model = self.best_model, None
         self.config.is_training = False
         self.model.eval()
 
         return train_loss_history, val_loss_history
 
-    def epoch_step(self, loader, train=True, pipe=None):
+    def epoch_step(self, loader, top_n_errors, train=True, pipe=None):
         questions = []
         contexts = []
+        native_contexts = []
+        epoch_top_n_errors = {}
         loss_sum = 0
-        top_1_error = 0
-        top_3_error = 0
+
         for batch in loader:
             questions.extend(batch['question'])
             contexts.extend(batch['context'])
+            native_contexts.extend(batch['native_context'])
 
             question = self.tokenizer([item for item in batch['question']], return_tensors="pt",
                                       max_length=self.config.max_length, truncation=True, padding="max_length")
             context = self.tokenizer([item for item in batch['context']], return_tensors="pt",
                                      max_length=self.config.max_length, truncation=True, padding="max_length")
 
-            embeddings_question = self.forward(**question.to(self.config.device))
-            embeddings_context = self.forward(**context.to(self.config.device))
-            scores = torch.mm(embeddings_question, torch.transpose(embeddings_context, 0, 1)) * self.config.cossim_scale
-            labels = torch.tensor(range(len(scores)), dtype=torch.long, device=embeddings_question.device)
-            loss = (self.loss_func(scores, labels) + self.loss_func(torch.transpose(scores, 0, 1), labels)) / 2
+            with torch.autocast(device_type="cuda", dtype=self.autocast_type):
+                embeddings_question = self.forward(**question.to(self.config.device))
+                embeddings_context = self.forward(**context.to(self.config.device))
+                scores = torch.mm(embeddings_question, torch.transpose(embeddings_context, 0, 1)) * self.config.cossim_scale
+                labels = torch.tensor(range(len(scores)), dtype=torch.long, device=embeddings_question.device)
+                loss = (self.loss_func(scores, labels) + self.loss_func(torch.transpose(scores, 0, 1), labels)) / 2
 
             if train:
                 self.optimizer.zero_grad()
@@ -193,17 +201,14 @@ class BaseSentenceSimilarityEmbeddingsModel:
             self.config.is_training = False
             self.model.eval()
 
-            for question, context in zip(questions, contexts):
-                pred_contexts = pipe.__call__(question, return_en=True)
-                if pred_contexts[0]['answer'] != context:
-                    top_1_error += 1
-                if context not in [pred['answer'] for pred in pred_contexts[:3]]:
-                    top_3_error += 1
+            with torch.autocast(device_type="cuda", dtype=self.autocast_type):
+                pred_contexts = [pipe.__call__(question)[0] for question in questions]
+                epoch_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
             self.config.is_training = True
             self.model.train()
 
-        return loss_sum, top_1_error, top_3_error
+        return loss_sum, epoch_top_n_errors
 
     def encode(self, sentences):
         assert not self.config.is_training, SentenceEmbeddingsModelError('evaluating')
@@ -216,7 +221,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
         for start_index in trange(0, len(sentences), self.config.evaluation_batch_size, desc="Batches", disable=True):
             sentences_batch = sentences_sorted[start_index:start_index + self.config.evaluation_batch_size]
             features = self.tokenizer(sentences_batch, padding=True, truncation=True, return_tensors='pt')
-            features = util.batch_to_device(features, self.config.device)
+            features = batch_to_device(features, self.config.device)
 
             with torch.no_grad():
                 out_features = self.forward(**features)
@@ -232,12 +237,6 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
     @staticmethod
     def _text_length(text):
-        """
-        Help function to get the length for the input text. Text can be either
-        a list of ints (which means a single text as input), or a tuple of list of ints
-        (representing several text inputs to the model).
-        """
-
         if isinstance(text, dict):
             return len(next(iter(text.values())))
         elif not hasattr(text, '__len__'):

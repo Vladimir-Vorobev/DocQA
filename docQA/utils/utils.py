@@ -2,6 +2,7 @@ import torch
 import inspect
 import random
 import numpy as np
+from torch import Tensor, device
 
 
 def copy_class_parameters(class_a, class_b):
@@ -18,8 +19,15 @@ def seed_worker(worker_id):
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
+def batch_to_device(batch, target_device: device):
+    for key in batch:
+        if isinstance(batch[key], Tensor):
+            batch[key] = batch[key].to(target_device)
+    return batch
+
 
 __all__ = [
     'copy_class_parameters',
-    'seed_worker'
+    'seed_worker',
+    'batch_to_device'
 ]

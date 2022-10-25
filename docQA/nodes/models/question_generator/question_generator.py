@@ -1,4 +1,4 @@
-from docQA.nodes.translator import translator
+from docQA.nodes.translator import Translator
 
 from keybert import KeyBERT
 from transformers import (
@@ -12,6 +12,8 @@ import torch
 import joblib
 import pandas as pd
 from tqdm.autonotebook import tqdm
+
+translator = Translator('facebook/wmt19-ru-en')
 
 
 class QuestionGenerator:
@@ -37,22 +39,27 @@ class QuestionGenerator:
             qa_engine='transformers',
 
             native_lang='ru',
-            cuda=False,
+            device='cuda',
     ):
-        self.device = 'cuda' if cuda else 'cpu'
+        self.device = device
 
         self._cdqa_pipe = cdqa_pipe
         self._native_lang = native_lang
         self._qg_engine = qg_engine
         self._kw_model = KeyBERT()
 
+        self.keyword_range = (3, 5)
+        self.keyword_qty = 8
+        self.min_tokens_qty = 7
+        self.min_rr_treshold = 0.3
+        self.max_rr_treshold = 0.91
+
         self._docs = []
         self._native_docs = []
 
-        for doc, native_doc in zip(cdqa_pipe._retriever_docs_en, cdqa_pipe._retriever_docs):
-            for text, native_text in zip(doc, native_doc):
-                self._docs.append({'input_text': text, **qg_model_args})
-                self._native_docs.append(native_text)
+        for text, native_text in zip(cdqa_pipe.preprocessor.retriever_docs_translated, cdqa_pipe.preprocessor.retriever_docs_native):
+            self._docs.append({'input_text': text, **qg_model_args})
+            self._native_docs.append(native_text)
 
         if qg_model_path:
             raise BaseException('Sorry, but loading qg_model from your path is not supported now.')
@@ -72,27 +79,20 @@ class QuestionGenerator:
         else:
             raise BaseException(f'Invalid qa_engine {qa_engine}. Supported types: transformers.')
 
-    def __call__(self, use_ranker_retriever=True, use_qa=True, rr_threshold=0.5, save_questions=True,
-                 path_to_save=None):
+    def _generate_questions(self, use_ranker_retriever=True, use_qa=True, save_questions=True, path_to_save=None):
         if not use_ranker_retriever and not use_qa:
             raise BaseException('To generate_questions at least one of use_ranker_retriever or use_qa must be True.')
 
-        questions = self._generate_questions(use_ranker_retriever, use_qa, rr_threshold, save_questions)
-
-        if save_questions:
-            pd.DataFrame(questions).to_csv(path_to_save)
-
-    def _generate_questions(self, use_ranker_retriever, use_qa, retriever_threshold, save_questions):
         outputs = []
 
         for doc, native_doc in zip(tqdm(self._docs, ascii=True, desc='Generating questions'), self._native_docs):
             doc_text = doc['input_text']
             ##
-            if len(doc_text.split()) < 7:
+            if len(doc_text.split()) < self.min_tokens_qty:
                 continue
             ##
 
-            keywords = self._extract_keywords(doc_text, (3, 5), 5)
+            keywords = self._extract_keywords(doc_text, self.keyword_range, self.keyword_qty)
 
             candidates = self._prepare_candidates(keywords, doc_text)
 
@@ -104,62 +104,68 @@ class QuestionGenerator:
             for question in questions:
                 question_statement = question['question_statement']
                 question_context = question['context']
-                result = self._question_checker(question_statement, question_context, doc_text, native_doc,
-                                                use_ranker_retriever, use_qa, retriever_threshold)
+                result = self._question_checker(
+                    question_statement, question_context, doc_text, native_doc,
+                    use_ranker_retriever, use_qa, self.min_rr_treshold, self.max_rr_treshold
+                )
 
                 if result:
                     outputs.append(result)
-
-        return outputs
+        
+        if save_questions:
+            pd.DataFrame(outputs).to_csv(path_to_save)
 
     def _extract_keywords(self, text, keyphrase_ngram_range, top_n):
-        return self._kw_model.extract_keywords(text, keyphrase_ngram_range=keyphrase_ngram_range, use_maxsum=False,
-                                               use_mmr=False, top_n=top_n)
+        return self._kw_model.extract_keywords(
+            text, keyphrase_ngram_range=keyphrase_ngram_range, use_maxsum=False, use_mmr=False, top_n=top_n
+        )
 
     def _prepare_candidates(self, keywords, text):
         candidates = []
 
         for keyword in keywords:
-            newText = text.replace(keyword[0], '<hl> ' + keyword[0] + ' <hl>') + '</s>'
+            new_text = text.replace(keyword[0], '<hl> ' + keyword[0] + ' <hl>') + '</s>'
 
-            candidates.append(newText)
+            candidates.append(new_text)
 
-            newText = '<hl> ' + text.replace(keyword[0], '<hl> ' + keyword[0]) + '</s>'
+            new_text = '<hl> ' + text.replace(keyword[0], '<hl> ' + keyword[0]) + '</s>'
 
-            candidates.append(newText)
+            candidates.append(new_text)
 
-            newText = text.replace(keyword[0], keyword[0] + ' <hl>') + '<hl> </s>'
+            new_text = text.replace(keyword[0], keyword[0] + ' <hl>') + '<hl> </s>'
 
-            candidates.append(newText)
+            candidates.append(new_text)
 
         return candidates
 
     def generate(self, candidates):
         questions = []
 
-        for candidate in candidates:
+        tokens = self._qg_tokenizer.batch_encode_plus(
+            candidates, return_tensors='pt',
+            max_length=512,
+            truncation=True,
+            padding=True
+        ).to('cuda')
 
-            tokens = self._qg_tokenizer.encode(candidate, return_tensors='pt', max_length=512, truncation=True).to(
-                self.device)
+        with torch.no_grad():
+            outputs = self._qg_model.generate(**tokens, max_new_tokens=512)
+        
+        for gen in range(len(outputs)-1):
+            decoded = self._qg_tokenizer.decode(outputs[gen], max_length=512, truncation=True).replace('<pad> ', '').replace('</s>', '').replace('<pad>', '').replace('<pad>', '')
+            if decoded not in candidates[gen].replace('<hl> ', '').replace(' <hl>', '').replace('</s>', ''):
+                questions.append((decoded, candidates[gen].replace('<hl> ', '').replace(' <hl>', '').replace('</s>', '')))
 
-            newgend = []
-            gend = self._qg_model.generate(tokens, max_length=512)
+        del tokens
+        torch.cuda.empty_cache()
 
-            for gen in gend:
-                newgend.append(self._qg_tokenizer.decode(gen, max_length=512, truncation=True))
+        return [{'question_statement': question[0], 'context': question[1]} for question in set(questions)]
 
-            questions.append({'question_statement': newgend[0], 'context': candidate})
-
-            del tokens
-            torch.cuda.empty_cache()
-
-        return questions
-
-    def _question_checker(self, question_statement, question_answer, doc_text, native_doc, use_ranker_retriever, use_qa,
-                          retriever_threshold):
+    def _question_checker(
+            self, question_statement, question_answer, doc_text, native_doc, use_ranker_retriever, use_qa, min_rr_threshold, max_rr_threshold
+    ):
         if use_ranker_retriever:
-            for result in self._ranker_retriever_question_checker(question_statement, doc_text, native_doc,
-                                                                  retriever_threshold):
+            for result in self._ranker_retriever_question_checker(question_statement, doc_text, native_doc, min_rr_threshold, max_rr_threshold):
                 if use_qa:
                     result = self._qa_question_checker(doc_text, question_statement, question_answer, result=result)
 
@@ -174,16 +180,17 @@ class QuestionGenerator:
 
         return None
 
-    def _ranker_retriever_question_checker(self, question_statement, doc_text, native_doc, retriever_threshold):
-        rr_preds = self._cdqa_pipe(question_statement, return_en=True)
-        native_question_statement = translator.translate(question_statement, from_code='en', to_code=self._native_lang)
+    def _ranker_retriever_question_checker(self, question_statement, doc_text, native_doc, min_rr_treshold, max_rr_treshold):
+        rr_preds = self._cdqa_pipe(question_statement, return_translated=True)
+        native_question_statement = translator._translate(question_statement)
 
-        for rank, pred in enumerate(rr_preds):
-            pred_answer = pred['answer']
-            retriever_score = pred['retriever_score']
-            ranker_score = pred['ranker_score']
+        for rank, pred in enumerate(rr_preds[0]['output']['answers']):
+            pred_answer = pred['translated_answer']
+            retriever_score = pred['scores']['retriever_0_cos_sim']
+            ranker_score = pred['scores']['ranker_0_cos_sim']
+            score = (retriever_score + ranker_score) / 2
 
-            if (doc_text in pred_answer and retriever_score >= retriever_threshold):
+            if (doc_text in pred_answer and score >= min_rr_treshold and score <= max_rr_treshold and question_statement not in doc_text):
                 yield {
                     'en_question': question_statement,
                     'native_question': native_question_statement,
@@ -202,16 +209,12 @@ class QuestionGenerator:
             outputs = self._qa_model(**inputs)
 
         answer_start_index = outputs.start_logits.argmax()
-
         answer_end_index = outputs.end_logits.argmax()
-
         predict_answer_tokens = inputs.input_ids[0, answer_start_index: answer_end_index + 1]
-
         qa_pred_answer = self._qa_tokenizer.decode(predict_answer_tokens).lower()
-
-        native_question_statement = translator.translate(question_statement, from_code='en', to_code=self._native_lang)
-        native_question_answer = translator.translate(question_answer, from_code='en', to_code=self._native_lang)
-        native_doc = translator.translate(doc_text, from_code='en', to_code=self._native_lang)
+        native_question_statement = translator._translate(question_statement)
+        native_question_answer = translator._translate(question_answer)
+        native_doc = translator._translate(doc_text)
 
         del inputs
         torch.cuda.empty_cache()
@@ -224,7 +227,7 @@ class QuestionGenerator:
                     'en_context': doc_text,
                     'native_context': native_doc,
                     'en_question_answer': question_answer,
-                    'native_question_answer': native_question_answer,
+                    'native_question_answer': native_question_answer
                 }
 
             result['en_question_answer'] = question_answer
