@@ -35,7 +35,7 @@ class Pipeline:
 
             return data
 
-    def add_node(self, node: Any, name: str, is_technical: bool = False, **kwargs):
+    def add_node(self, node: Any, name: str, is_technical: bool = False, demo_only: bool = False, **kwargs):
         assert name not in self.nodes, PipelineError(
             f'A node with a name {name} ({node.pipe_type} pipeline type) is already exists in this pipeline.'
         )
@@ -66,7 +66,8 @@ class Pipeline:
 
         self.nodes[name] = {
             'node': node(**kwargs),
-            'is_technical': is_technical
+            'is_technical': is_technical,
+            'demo_only': demo_only
         }
 
     def fit(self, data: TrainData, top_n_errors: Union[int, List[int]] = [1, 3, 5, 10], evaluate: bool = True, eval_step: int = 5):
@@ -87,7 +88,7 @@ class Pipeline:
                     if fit_pipe:
                         fit_pipe.preprocessor = self.preprocessor
 
-                        for fit_node_name in self.nodes:
+                        for fit_node_name in [name for name in self.nodes if not self.nodes[name]['demo_only']]:
                             fit_pipe.nodes[fit_node_name] = self.nodes[fit_node_name]
                             if fit_node_name == node_name:
                                 break

@@ -1,5 +1,5 @@
 {
-    "model_name": "facebook/wmt19-ru-en",
+    "model_name": "Helsinki-NLP/opus-mt-ru-en",
     "model_path": "",
     "local_files_only": true,
     "device": "cuda",
