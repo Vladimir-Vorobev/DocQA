@@ -36,7 +36,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
         self.optimizer = optimizer
         self.loss_func = loss_func
 
-        self.autocast_type = torch.float16
+        self.autocast_type = torch.float32
 
         if self.config.model_path:
             self.model = joblib.load(self.config.model_path)
@@ -85,8 +85,8 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
         return embeddings.cpu()
 
-    def fit(self, train_data, val_size=0.2, top_n_errors=None, pipe=None):
-        if top_n_errors is None:
+    def fit(self, train_data, val_size=0.2, top_n_errors=None, pipe=None, eval_step=5):
+        if not top_n_errors or not pipe:
             top_n_errors = {}
 
         self.config.is_training = True
@@ -115,20 +115,22 @@ class BaseSentenceSimilarityEmbeddingsModel:
         val_top_n_errors_history = {n: [] for n in top_n_errors}
 
         for epoch in tqdm(range(self.config.epochs), desc=f'Fine tuning {self.name}'):
-            train_loss_sum, train_top_n_errors = self.epoch_step(train_loader, top_n_errors=top_n_errors, pipe=pipe)
+            do_evaluate = epoch == 0 or not (epoch + 1) % eval_step
+
+            train_loss_sum, train_top_n_errors = self.epoch_step(
+                train_loader, top_n_errors=top_n_errors, pipe=pipe if do_evaluate else None
+            )
 
             with torch.no_grad():
-                val_loss_sum, val_top_n_errors = self.epoch_step(val_loader, top_n_errors=top_n_errors, train=False, pipe=pipe)
+                val_loss_sum, val_top_n_errors = self.epoch_step(
+                    val_loader, top_n_errors=top_n_errors, train=False, pipe=pipe if do_evaluate else None
+                )
 
             train_loss_sum /= self.config.training_batch_size
             val_loss_sum /= self.config.training_batch_size
 
             train_loss_history.append(train_loss_sum)
             val_loss_history.append(val_loss_sum)
-
-            for n in top_n_errors:
-                train_top_n_errors_history[n].append(train_top_n_errors[n])
-                val_top_n_errors_history[n].append(val_top_n_errors[n])
 
             visualize_fitting(
                 {
@@ -137,13 +139,17 @@ class BaseSentenceSimilarityEmbeddingsModel:
                 }, self.name, x_label='epoch', y_label='loss'
             )
 
-            for n in top_n_errors:
-                visualize_fitting(
-                    {
-                        f'train top-{n} error': train_top_n_errors_history[n],
-                        f'val top-{n} error': val_top_n_errors_history[n]
-                    }, self.name, metric=f'top-{n} error', x_label='epoch', y_label=f'top-{n} error'
-                )
+            if do_evaluate:
+                for n in top_n_errors:
+                    train_top_n_errors_history[n].append(train_top_n_errors[n])
+                    val_top_n_errors_history[n].append(val_top_n_errors[n])
+
+                    visualize_fitting(
+                        {
+                            f'train top-{n} error': train_top_n_errors_history[n],
+                            f'val top-{n} error': val_top_n_errors_history[n]
+                        }, self.name, metric=f'top-{n} error', x_label='epoch', y_label=f'top-{n} error'
+                    )
 
             # if val_top_1_error <= val_top_1_error_max:
             #     self.best_model = self.model
@@ -176,7 +182,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
             native_contexts.extend(batch['native_context'])
 
             question = self.tokenizer([item for item in batch['question']], return_tensors="pt",
-                                      max_length=self.config.max_length, truncation=True, padding="max_length")
+                                      max_length=self.config.max_question_length, truncation=True, padding="max_length")
             context = self.tokenizer([item for item in batch['context']], return_tensors="pt",
                                      max_length=self.config.max_length, truncation=True, padding="max_length")
 
@@ -202,7 +208,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
             self.model.eval()
 
             with torch.autocast(device_type="cuda", dtype=self.autocast_type):
-                pred_contexts = [pipe.__call__(question)[0] for question in questions]
+                pred_contexts = [pipe.__call__(question, threshold=0)[0] for question in questions]
                 epoch_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
             self.config.is_training = True
@@ -220,7 +226,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
         for start_index in trange(0, len(sentences), self.config.evaluation_batch_size, desc="Batches", disable=True):
             sentences_batch = sentences_sorted[start_index:start_index + self.config.evaluation_batch_size]
-            features = self.tokenizer(sentences_batch, padding=True, truncation=True, return_tensors='pt')
+            features = self.tokenizer(sentences_batch, padding=True, truncation=True, return_tensors='pt',max_length=self.config.max_length)
             features = batch_to_device(features, self.config.device)
 
             with torch.no_grad():

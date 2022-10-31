@@ -69,7 +69,7 @@ class Pipeline:
             'is_technical': is_technical
         }
 
-    def fit(self, data: TrainData, top_n_errors: Union[int, List[int]] = [1, 3, 5, 10], evaluate: bool = True):
+    def fit(self, data: TrainData, top_n_errors: Union[int, List[int]] = [1, 3, 5, 10], evaluate: bool = True, eval_step: int = 5):
         if not evaluate:
             top_n_errors = []
 
@@ -92,7 +92,7 @@ class Pipeline:
                             if fit_node_name == node_name:
                                 break
 
-                    node.fit(data, top_n_errors=top_n_errors, pipe=fit_pipe)
+                    node.fit(data, top_n_errors=top_n_errors, pipe=fit_pipe, eval_step=eval_step)
 
                 elif node.pipe_type == 'catboost':
                     node.fit(

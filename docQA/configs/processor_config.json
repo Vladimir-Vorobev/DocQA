@@ -8,5 +8,5 @@
     "replace_retriever_sep": true,
     "native_lang": "ru",
     "docs_file_path": "model_docs.json",
-    "doc_encoding": "utf-16"
+    "doc_encoding": "utf-8"
 }
