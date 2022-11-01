@@ -7,11 +7,11 @@
     "normalize": true,
     "max_grad_norm": 1,
     "device": "cuda",
-    "epochs": 25,
-    "training_batch_size": 24,
+    "epochs": 5,
+    "training_batch_size": 64,
     "display_progress_bar": true,
     "cossim_scale": 20,
-    "evaluation_batch_size": 24,
+    "evaluation_batch_size": 64,
     "max_length": 256,
     "max_question_length": 256
 }

@@ -1,11 +1,11 @@
 from docQA.typing_schemas import PipeOutput
-from docQA.utils.torch import BaseDataset
 from docQA.pipelines.base import BasePipeline
 from docQA.errors import PipelineError
+from docQA.metrics import top_n_qa_error
 from docQA import seed
 
 from typing import List, Union
-import torch
+import json
 import catboost
 import pandas as pd
 
@@ -62,31 +62,55 @@ class CatboostPipeline(BasePipeline):
     def fit(
             self,
             data,
-            previous_outputs,
-            val_size=0.3,
+            train_dataset,
+            val_dataset,
+            top_n_errors=None,
+            pipe=None
     ):
-        assert previous_outputs and previous_outputs[0]['output']['answers'] \
-               and previous_outputs[0]['output']['answers'][0]['scores'], PipelineError(
-                   'To use CatboostPipeline you should have non-technical nodes in Pipeline before this pipeline.'
-               )
-        data = {item['question']: item['native_context'] for item in data}
+        # assert previous_outputs and previous_outputs[0]['output']['answers'] \
+        #        and previous_outputs[0]['output']['answers'][0]['scores'], PipelineError(
+        #            'To use CatboostPipeline you should have non-technical nodes in Pipeline before this pipeline.'
+        #        )
 
-        for output_item in previous_outputs:
-            for answer in output_item['output']['answers']:
-                answer['is_correct'] = 1 if self.native_texts[answer['index']] == data[output_item['input']] else 0
+        if not top_n_errors or not pipe:
+            top_n_errors = {}
 
-        dataset = BaseDataset(previous_outputs)
-        train_length = int(len(dataset) * (1 - val_size))
-        val_length = len(dataset) - train_length
-        train_df, val_df = torch.utils.data.random_split(
-            dataset, [train_length, val_length], generator=torch.Generator().manual_seed(seed)
-        )
-        train_dataset, val_dataset = self._create_dataset(train_df), self._create_dataset(val_df)
+        train_top_n_errors = {}
+        val_top_n_errors = {}
+        train_data = {item['question']: item['native_context'] for item in data}
+        val_data = {item['question']: item['native_context'] for item in data}
+
+        for train_item in train_dataset:
+            for answer in train_item['output']['answers']:
+                answer['is_correct'] = 1 if self.native_texts[answer['index']] == train_data[train_item['input']] else 0
+
+        for val_item in val_dataset:
+            for answer in val_item['output']['answers']:
+                answer['is_correct'] = 1 if self.native_texts[answer['index']] == val_data[val_item['input']] else 0
+
+        train_dataset, val_dataset = self._create_dataset(train_dataset), self._create_dataset(val_dataset)
 
         X_train, y_train = train_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
-        X_test, y_test = val_dataset.drop('is_correct', axis=1), val_dataset['is_correct']
+        X_test, y_test = val_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
 
         self.model.fit(X_train, y_train, text_features=['question', 'answer'], silent=True)
+
+        native_contexts = [train_data[question] for question in train_data]
+        pred_contexts = [pipe.__call__(question, threshold=0)[0] for question in X_train['question']]
+        train_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
+
+        if pipe:
+            native_contexts = [val_data[question] for question in val_data]
+            pred_contexts = [pipe.__call__(question, threshold=0)[0] for question in X_test['question']]
+            val_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
+
+        with open(f'docs/{self.pipe_type}_fitting_results.json', 'w') as w:
+            w.write(json.dumps({
+                'train_top_n_errors_history': train_top_n_errors,
+                'val_top_n_errors_history': val_top_n_errors,
+            }))
+
+        return train_top_n_errors, val_top_n_errors
 
     def _create_dataset(self, df):
         dataset = []

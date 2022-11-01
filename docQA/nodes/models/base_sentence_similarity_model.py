@@ -1,5 +1,4 @@
 from docQA.configs import ConfigParser
-from docQA.utils.torch import BaseDataset
 from docQA.utils.visualization import visualize_fitting
 from docQA.utils import seed_worker, batch_to_device
 from docQA.errors import DeviceError, SentenceEmbeddingsModelError
@@ -85,19 +84,12 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
         return embeddings.cpu()
 
-    def fit(self, train_data, val_size=0.2, top_n_errors=None, pipe=None, eval_step=5):
+    def fit(self, train_dataset, val_dataset, top_n_errors=None, pipe=None, eval_step=5):
         if not top_n_errors or not pipe:
             top_n_errors = {}
 
         self.config.is_training = True
         self.model.train()
-
-        dataset = BaseDataset(train_data)
-        train_length = int(len(dataset) * (1 - val_size))
-        val_length = len(dataset) - train_length
-        train_dataset, val_dataset = torch.utils.data.random_split(
-            dataset, [train_length, val_length], generator=torch.Generator().manual_seed(seed)
-        )
 
         train_loader = torch.utils.data.DataLoader(
             train_dataset, batch_size=self.config.training_batch_size,

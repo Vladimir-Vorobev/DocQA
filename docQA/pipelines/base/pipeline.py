@@ -1,8 +1,11 @@
 from docQA.nodes.file_preprocessor import DocProcessor
 from docQA.typing_schemas import PipeOutput, TrainData
 from docQA.errors import PipelineError
+from docQA.utils.torch import BaseDataset
+from docQA import seed
 
 from typing import Union, List, Any
+import torch
 
 
 class Pipeline:
@@ -70,11 +73,20 @@ class Pipeline:
             'demo_only': demo_only
         }
 
-    def fit(self, data: TrainData, top_n_errors: Union[int, List[int]] = [1, 3, 5, 10], evaluate: bool = True, eval_step: int = 5):
+    def fit(self, data: TrainData, val_size: float = 0.2, top_n_errors: Union[int, List[int]] = [1, 3, 5, 10], evaluate: bool = True, eval_step: int = 5):
         if not evaluate:
             top_n_errors = []
 
-        previous_outputs = [item['question'] for item in data]
+        dataset = BaseDataset(data)
+        train_length = int(len(dataset) * (1 - val_size))
+        val_length = len(dataset) - train_length
+
+        train_dataset, val_dataset = torch.utils.data.random_split(
+            dataset, [train_length, val_length], generator=torch.Generator().manual_seed(seed)
+        )
+
+        train_previous_outputs = [item['question'] for item in train_dataset]
+        val_previous_outputs = [item['question'] for item in val_dataset]
 
         for node_name in self.nodes:
             item = self.nodes[node_name]
@@ -82,25 +94,26 @@ class Pipeline:
             is_technical = item['is_technical']
 
             if not is_technical:
+                fit_pipe = Pipeline([]) if evaluate else None
+
+                if fit_pipe:
+                    fit_pipe.preprocessor = self.preprocessor
+
+                    for fit_node_name in [name for name in self.nodes if not self.nodes[name]['demo_only']]:
+                        fit_pipe.nodes[fit_node_name] = self.nodes[fit_node_name]
+                        if fit_node_name == node_name:
+                            break
+
                 if node.pipe_type in ['retriever', 'ranker']:
-                    fit_pipe = Pipeline([]) if evaluate else None
-
-                    if fit_pipe:
-                        fit_pipe.preprocessor = self.preprocessor
-
-                        for fit_node_name in [name for name in self.nodes if not self.nodes[name]['demo_only']]:
-                            fit_pipe.nodes[fit_node_name] = self.nodes[fit_node_name]
-                            if fit_node_name == node_name:
-                                break
-
-                    node.fit(data, top_n_errors=top_n_errors, pipe=fit_pipe, eval_step=eval_step)
+                    node.fit(train_dataset, val_dataset, top_n_errors=top_n_errors, pipe=fit_pipe, eval_step=eval_step)
 
                 elif node.pipe_type == 'catboost':
                     node.fit(
-                        data, previous_outputs=previous_outputs
+                        data, train_previous_outputs, val_previous_outputs, top_n_errors=top_n_errors, pipe=fit_pipe
                     )
 
-            previous_outputs = self._call_node(node_name, previous_outputs)
+            train_previous_outputs = self._call_node(node_name, train_previous_outputs)
+            val_previous_outputs = self._call_node(node_name, val_previous_outputs)
 
     def modify_output(self, data, return_translated=False):
         if isinstance(data, dict):
