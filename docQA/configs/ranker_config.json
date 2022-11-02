@@ -1,5 +1,5 @@
 {
-    "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+    "model_name": "sentence-transformers/all-MiniLM-L12-v2",
     "model_path": "",
     "local_files_only": false,
     "lr": 1e-5,
@@ -7,11 +7,11 @@
     "normalize": true,
     "max_grad_norm": 1,
     "device": "cuda",
-    "epochs": 5,
-    "training_batch_size": 32,
+    "epochs": 25,
+    "training_batch_size": 16,
     "display_progress_bar": true,
     "cossim_scale": 20,
-    "evaluation_batch_size": 32,
+    "evaluation_batch_size": 16,
     "max_length": 256,
     "max_question_length": 256
 }

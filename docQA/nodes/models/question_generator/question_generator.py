@@ -13,7 +13,7 @@ import joblib
 import pandas as pd
 from tqdm.autonotebook import tqdm
 
-translator = Translator('Helsinki-NLP/opus-mt-ru-en')
+translator = Translator('facebook/wmt19-ru-en')
 
 
 class QuestionGenerator:

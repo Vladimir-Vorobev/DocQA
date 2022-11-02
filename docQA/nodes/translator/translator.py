@@ -1,20 +1,18 @@
 import torch
 from transformers import (
-    AutoTokenizer,
-    AutoModelForSeq2SeqLM
+    FSMTForConditionalGeneration,
+    FSMTTokenizer
 )
 from docQA.utils.torch.dataset import BaseDataset
 from docQA.utils.utils import seed_worker
 
-cache_dir = "/home/transformers_files/"
-cache_dir_models = cache_dir + "default_models/"
-cache_dir_tokenizers = cache_dir + "tokenizers/"
-
 
 class Translator:
     def __init__(self, model_name, device='cuda'):
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name, cache_dir=cache_dir_tokenizers).to(device)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir_tokenizers)
+        self.model = FSMTForConditionalGeneration.from_pretrained(model_name).to(device)
+        self.model.config.max_length = 512
+        self.model.config.num_beams = 25
+        self.tokenizer = FSMTTokenizer.from_pretrained(model_name)
         self.device = device
         self.batch_size = 8
 

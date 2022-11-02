@@ -24,12 +24,13 @@ class Pipeline:
             return_translated: bool = False,
             threshold: float = 0.3,
             return_output: bool = True,
+            is_demo: bool = True,
             **kwargs
     ) -> PipeOutput:
         if not self.nodes:
             raise PipelineError('You have to have at least one node to call a pipeline.')
         for node_name in self.nodes:
-            data = self._call_node(node_name, data, **kwargs)
+            data = self._call_node(node_name, data, is_demo=is_demo, **kwargs)
         if return_output:
             data = self.modify_output(data, return_translated)
 
@@ -112,8 +113,8 @@ class Pipeline:
                         data, train_previous_outputs, val_previous_outputs, top_n_errors=top_n_errors, pipe=fit_pipe
                     )
 
-            train_previous_outputs = self._call_node(node_name, train_previous_outputs)
-            val_previous_outputs = self._call_node(node_name, val_previous_outputs)
+            train_previous_outputs = self._call_node(node_name, train_previous_outputs, is_demo=False)
+            val_previous_outputs = self._call_node(node_name, val_previous_outputs, is_demo=False)
 
     def modify_output(self, data, return_translated=False):
         if isinstance(data, dict):
@@ -134,6 +135,14 @@ class Pipeline:
 
         return data
 
-    def _call_node(self, node_name, data, **kwargs):
-        node = self.nodes[node_name]['node']
-        return node(data) if node_name not in kwargs else node(data, *kwargs[node_name])
+    def _call_node(self, node_name, data, is_demo=True, **kwargs):
+        demo_only = self.nodes[node_name]['demo_only']
+        
+        if (is_demo and demo_only) or (not is_demo and not demo_only):
+            if node_name == 'translator':
+                print('translator')
+
+            node = self.nodes[node_name]['node']
+            return node(data) if node_name not in kwargs else node(data, *kwargs[node_name])
+        
+        return data

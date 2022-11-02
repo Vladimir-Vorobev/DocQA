@@ -1,5 +1,5 @@
 {
-    "model_name": "sentence-transformers/msmarco-distilbert-multilingual-en-de-v2-tmp-trained-scratch",
+    "model_name": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
     "model_path": "",
     "local_files_only": false,
     "lr": 1e-5,
@@ -7,11 +7,11 @@
     "normalize": true,
     "max_grad_norm": 1,
     "device": "cuda",
-    "epochs": 5,
-    "training_batch_size": 64,
+    "epochs": 25,
+    "training_batch_size": 16,
     "display_progress_bar": true,
     "cossim_scale": 20,
-    "evaluation_batch_size": 64,
+    "evaluation_batch_size": 16,
     "max_length": 256,
     "max_question_length": 256
 }

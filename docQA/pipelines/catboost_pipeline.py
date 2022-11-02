@@ -96,12 +96,12 @@ class CatboostPipeline(BasePipeline):
         self.model.fit(X_train, y_train, text_features=['question', 'answer'], silent=True)
 
         native_contexts = [train_data[question] for question in train_data]
-        pred_contexts = [pipe.__call__(question, threshold=0)[0] for question in X_train['question']]
+        pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in X_train['question']]
         train_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
         if pipe:
             native_contexts = [val_data[question] for question in val_data]
-            pred_contexts = [pipe.__call__(question, threshold=0)[0] for question in X_test['question']]
+            pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in X_test['question']]
             val_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
         with open(f'docs/{self.pipe_type}_fitting_results.json', 'w') as w:

@@ -200,7 +200,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
             self.model.eval()
 
             with torch.autocast(device_type="cuda", dtype=self.autocast_type):
-                pred_contexts = [pipe.__call__(question, threshold=0)[0] for question in questions]
+                pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in questions]
                 epoch_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
             self.config.is_training = True
