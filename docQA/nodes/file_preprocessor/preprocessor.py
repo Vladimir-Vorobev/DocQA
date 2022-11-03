@@ -52,7 +52,7 @@ class DocProcessor:
         self.retriever_docs_native.extend(docs)
 
         self.ranker_docs_native.extend(
-            [self._create_ranker_doc(doc) for doc in tqdm(docs, desc='Grouping docs by paragraphs')]
+            [self._create_ranker_doc(doc) for doc in docs]
         )
 
         if self.translator:

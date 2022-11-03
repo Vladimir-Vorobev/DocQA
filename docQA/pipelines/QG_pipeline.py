@@ -8,9 +8,9 @@ class QgPipeline(BasePipeline, QuestionGenerator):
     def __init__(
             self,
             device: str = 'cuda',
-            number: int = 0,
             path_to_save: str = '',
-            cdqa_pipe=None
+            cdqa_pipe = None,
+            name: str = 'qg'
     ):
         self.path_to_save = path_to_save
         BasePipeline.__init__(self)
