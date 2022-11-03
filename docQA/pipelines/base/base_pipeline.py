@@ -9,7 +9,6 @@ class BasePipeline:
     pipe_type = 'base'
 
     def __init__(self):
-        self.number = 0
         self.name = ''
 
     def __call__(self, data: Any) -> PipeOutput:

@@ -12,28 +12,33 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
     def __init__(
             self,
             texts: List[str],
+            model: str = None,
             optimizer: Any = None,
             loss_func: Any = None,
             weight: float = 1.0,
-            number: int = 0,
+            name: str = 'ranker',
+            return_num: int = 10,
             config_path: str = 'docQA/configs/ranker_config.json'
     ):
         BasePipeline.__init__(self)
-        RankerEmbeddingsModel.__init__(self, optimizer, loss_func, config_path)
+        RankerEmbeddingsModel.__init__(self, model, optimizer, loss_func, config_path, name)
         self.texts = texts
         self.weight = weight
-        self.number = number
+        self.return_num = return_num
 
     def __call__(
             self,
             data: Union[str, List[str]],
-            num: int = 10
+            return_num: int = 10
     ) -> PipeOutput:
+        if self.return_num != return_num and return_num == 10:
+            return_num = self.return_num
+
         data = self.standardize_input(data)
         data = self.add_standard_answers(data, len(self.texts))
 
-        if num == -1:
-            num = len(data)
+        if return_num == -1:
+            return_num = len(data)
 
         for index in range(len(data)):
             answers = data[index]['output']['answers']
@@ -47,11 +52,11 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
 
                 score = cosine_similarity(embeddings[0], embedding) * self.weight
 
-                answer['scores'][f'ranker_{self.number}_cos_sim'] = score
+                answer['scores'][f'{self.name}_cos_sim'] = score
                 answer['total_score'] += score
                 answer['weights_sum'] += self.weight
 
             data[index]['output']['answers'] = \
-                sorted(answers, key=lambda x: x['total_score'], reverse=True)[:num]
+                sorted(answers, key=lambda x: x['total_score'], reverse=True)[:return_num]
 
         return data

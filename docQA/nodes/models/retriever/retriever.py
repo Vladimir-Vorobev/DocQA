@@ -4,8 +4,10 @@ from docQA.nodes.models import BaseSentenceSimilarityEmbeddingsModel
 class RetrieverEmbeddingsModel(BaseSentenceSimilarityEmbeddingsModel):
     def __init__(
             self,
+            model=None,
             optimizer=None,
             loss_func=None,
             config_path='docQA/configs/retriever_config.json',
+            name='retriever'
     ):
-        super().__init__(optimizer, loss_func, config_path, 'retriever')
+        super().__init__(model, optimizer, loss_func, config_path, name)

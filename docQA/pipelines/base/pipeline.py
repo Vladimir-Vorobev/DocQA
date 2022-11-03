@@ -6,17 +6,27 @@ from docQA import seed
 
 from typing import Union, List, Any
 import torch
+import pickle
 
 
 class Pipeline:
     def __init__(
             self,
-            docs_links: List[str],
-            doc_processor_config_path: str = 'docQA/configs/processor_config.json'
+            docs_links: List[str] = [],
+            doc_processor_config_path: str = 'docQA/configs/processor_config.json',
     ):
         self.preprocessor = DocProcessor(docs_links, doc_processor_config_path)
         self.nodes = {}
-        self.pipe_types = {}
+
+    def __getstate__(self) -> dict:
+        return {
+            'preprocessor': self.preprocessor,
+            'nodes': self.nodes
+        }
+
+    def __setstate__(self, state: dict):
+        self.preprocessor = state['preprocessor']
+        self.nodes = state['nodes']
 
     def __call__(
             self,
@@ -40,18 +50,11 @@ class Pipeline:
             return data
 
     def add_node(self, node: Any, name: str, is_technical: bool = False, demo_only: bool = False, **kwargs):
-        assert name not in self.nodes, PipelineError(
-            f'A node with a name {name} ({node.pipe_type} pipeline type) is already exists in this pipeline.'
-        )
-
         pipe_type = node.pipe_type
-        if pipe_type not in self.pipe_types:
-            self.pipe_types[pipe_type] = 1
-        else:
-            self.pipe_types[pipe_type] += 1
 
-        if 'number' not in kwargs:
-            kwargs['number'] = self.pipe_types[pipe_type] - 1
+        assert name not in self.nodes, PipelineError(
+            f'A node with a name {name} ({pipe_type} pipeline type) is already exists in this pipeline.'
+        )
 
         if pipe_type in ['retriever', 'catboost']:
             if self.preprocessor.retriever_docs_translated:
@@ -69,7 +72,7 @@ class Pipeline:
             kwargs['native_texts'] = self.preprocessor.retriever_docs_native
 
         self.nodes[name] = {
-            'node': node(**kwargs),
+            'node': node(name=name, **kwargs),
             'is_technical': is_technical,
             'demo_only': demo_only
         }
@@ -95,7 +98,7 @@ class Pipeline:
             is_technical = item['is_technical']
 
             if not is_technical:
-                fit_pipe = Pipeline([]) if evaluate else None
+                fit_pipe = Pipeline() if evaluate else None
 
                 if fit_pipe:
                     fit_pipe.preprocessor = self.preprocessor
@@ -138,11 +141,20 @@ class Pipeline:
     def _call_node(self, node_name, data, is_demo=True, **kwargs):
         demo_only = self.nodes[node_name]['demo_only']
         
-        if (is_demo and demo_only) or (not is_demo and not demo_only):
-            if node_name == 'translator':
-                print('translator')
-
+        if is_demo or (not is_demo and not demo_only):
             node = self.nodes[node_name]['node']
             return node(data) if node_name not in kwargs else node(data, *kwargs[node_name])
         
         return data
+
+    def save(self, fine_name: str = 'pipeline.pkl'):
+        b = pickle.dumps(self)
+        k = pickle.loads(b)
+        print(k)
+
+        with open(fine_name, 'wb') as w:
+            pickle.dump({'nodes': getattr(self, 'nodes'), 'preprocessor': getattr(self, 'preprocessor')}, w)
+
+    def load(self, fine_name):
+        with open(fine_name, 'rb') as r:
+            k = pickle.load(r)

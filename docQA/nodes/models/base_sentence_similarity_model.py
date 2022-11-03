@@ -22,6 +22,7 @@ import numpy as np
 class BaseSentenceSimilarityEmbeddingsModel:
     def __init__(
             self,
+            model=None,
             optimizer=None,
             loss_func=None,
             config_path='',
@@ -29,6 +30,9 @@ class BaseSentenceSimilarityEmbeddingsModel:
     ):
         self.name = name
         self._config = ConfigParser(config_path)
+
+        if model:
+            self.config.model_name = model
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
 

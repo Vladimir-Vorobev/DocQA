@@ -4,6 +4,7 @@ from docQA.errors import PipelineError
 from docQA.metrics import top_n_qa_error
 from docQA import seed
 
+from tqdm.autonotebook import tqdm
 from typing import List, Union
 import json
 import catboost
@@ -18,22 +19,28 @@ class CatboostPipeline(BasePipeline):
             texts: List[str],
             native_texts: List[str],
             weight: float = 1.0,
-            number: int = 0,
-            config_path: str = 'docQA/configs/catboost_config.json'
+            return_num: int = 10,
+            config_path: str = 'docQA/configs/catboost_config.json',
+            name: str = 'catboost'
     ):
         BasePipeline.__init__(self)
+        self.name = name
         self.texts = texts
         self.native_texts = native_texts
         self.weight = weight
-        self.number = number
+        self.return_num = return_num
         self.model = catboost.CatBoostClassifier(iterations=250, random_state=seed)
 
     def __call__(
             self,
             data: PipeOutput,
-            catboost_n: int = 10
+            return_num: int = 10
     ) -> PipeOutput:
+        if self.return_num != return_num and return_num == 30:
+            return_num = self.return_num
+
         data = self.standardize_input(data)
+        data = self.add_standard_answers(data, len(self.texts))
 
         for index in range(len(data)):
             answers = data[index]['output']['answers']
@@ -55,7 +62,7 @@ class CatboostPipeline(BasePipeline):
                 answer['weights_sum'] += self.weight
 
             data[index]['output']['answers'] = \
-                sorted(answers, key=lambda x: x['total_score'], reverse=True)[:catboost_n]
+                sorted(answers, key=lambda x: x['total_score'], reverse=True)[:return_num]
 
         return data
 
@@ -75,6 +82,11 @@ class CatboostPipeline(BasePipeline):
         if not top_n_errors or not pipe:
             top_n_errors = {}
 
+        train_dataset = self.standardize_input(train_dataset)
+        train_dataset = self.add_standard_answers(train_dataset, len(self.texts))
+        val_dataset = self.standardize_input(val_dataset)
+        val_dataset = self.add_standard_answers(val_dataset, len(self.texts))
+
         train_top_n_errors = {}
         val_top_n_errors = {}
         train_data = {item['question']: item['native_context'] for item in data}
@@ -93,18 +105,19 @@ class CatboostPipeline(BasePipeline):
         X_train, y_train = train_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
         X_test, y_test = val_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
 
-        self.model.fit(X_train, y_train, text_features=['question', 'answer'], silent=True)
+        for _ in tqdm(range(1), desc=f'Fine tuning {self.pipe_type}'):
+            self.model.fit(X_train, y_train, text_features=['question', 'answer'], silent=True)
 
-        native_contexts = [train_data[question] for question in train_data]
-        pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in X_train['question']]
-        train_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
+            native_contexts = [train_data[question] for question in X_train['question']]
+            pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in X_train['question']]
+            train_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
-        if pipe:
-            native_contexts = [val_data[question] for question in val_data]
-            pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in X_test['question']]
-            val_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
+            if pipe:
+                native_contexts = [val_data[question] for question in X_test['question']]
+                pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in X_test['question']]
+                val_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
-        with open(f'docs/{self.pipe_type}_fitting_results.json', 'w') as w:
+        with open(f'docs/{self.name}_fitting_results.json', 'w') as w:
             w.write(json.dumps({
                 'train_top_n_errors_history': train_top_n_errors,
                 'val_top_n_errors_history': val_top_n_errors,
