@@ -8,6 +8,7 @@ from tqdm.autonotebook import tqdm
 from typing import List, Union
 import json
 import catboost
+import numpy as np
 import pandas as pd
 
 
@@ -57,7 +58,7 @@ class CatboostPipeline(BasePipeline):
 
                 score = self.model.predict_proba(pd.DataFrame(input_data, index=[0]))[0][1] * self.weight
 
-                answer['scores'][f'catboost_{self.number}_proba'] = score
+                answer['scores'][f'{self.name}_proba'] = score
                 answer['total_score'] += score
                 answer['weights_sum'] += self.weight
 
@@ -82,6 +83,8 @@ class CatboostPipeline(BasePipeline):
         if not top_n_errors or not pipe:
             top_n_errors = {}
 
+        data = {item['question']: item['native_context'] for item in data}
+
         train_dataset = self.standardize_input(train_dataset)
         train_dataset = self.add_standard_answers(train_dataset, len(self.texts))
         val_dataset = self.standardize_input(val_dataset)
@@ -89,32 +92,32 @@ class CatboostPipeline(BasePipeline):
 
         train_top_n_errors = {}
         val_top_n_errors = {}
-        train_data = {item['question']: item['native_context'] for item in data}
-        val_data = {item['question']: item['native_context'] for item in data}
 
         for train_item in train_dataset:
             for answer in train_item['output']['answers']:
-                answer['is_correct'] = 1 if self.native_texts[answer['index']] == train_data[train_item['input']] else 0
+                answer['is_correct'] = 1 if self.native_texts[answer['index']] == data[train_item['input']] else 0
 
         for val_item in val_dataset:
             for answer in val_item['output']['answers']:
-                answer['is_correct'] = 1 if self.native_texts[answer['index']] == val_data[val_item['input']] else 0
+                answer['is_correct'] = 1 if self.native_texts[answer['index']] == data[val_item['input']] else 0
 
         train_dataset, val_dataset = self._create_dataset(train_dataset), self._create_dataset(val_dataset)
 
         X_train, y_train = train_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
-        X_test, y_test = val_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
+        X_val, y_val = val_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
 
         for _ in tqdm(range(1), desc=f'Fine tuning {self.pipe_type}'):
             self.model.fit(X_train, y_train, text_features=['question', 'answer'], silent=True)
 
-            native_contexts = [train_data[question] for question in X_train['question']]
-            pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in X_train['question']]
+            train_questions = np.unique(X_train['question'])
+            native_contexts = [data[question] for question in train_questions]
+            pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in train_questions]
             train_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
             if pipe:
-                native_contexts = [val_data[question] for question in X_test['question']]
-                pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in X_test['question']]
+                val_questions = np.unique(X_val['question'])
+                native_contexts = [data[question] for question in val_questions]
+                pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in val_questions]
                 val_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
 
         with open(f'docs/{self.name}_fitting_results.json', 'w') as w:

@@ -4,7 +4,7 @@
     "local_files_only": true,
     "device": "cuda",
     "retriever_sep": "\n",
-    "ranker_sep": "\n",
+    "ranker_sep": "",
     "replace_retriever_sep": true,
     "native_lang": "ru",
     "docs_file_path": "model_docs.json",

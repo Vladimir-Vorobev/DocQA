@@ -1,10 +1,11 @@
+from docQA.utils.torch.dataset import BaseDataset
+from docQA.utils.utils import seed_worker
+
 import torch
 from transformers import (
     FSMTForConditionalGeneration,
     FSMTTokenizer
 )
-from docQA.utils.torch.dataset import BaseDataset
-from docQA.utils.utils import seed_worker
 
 
 class Translator:
@@ -16,39 +17,30 @@ class Translator:
         self.device = device
         self.batch_size = 8
 
-        if not hasattr(self, 'translate_text'):
-            self.translate_text = True
+    def _translate(self, text: str):
+        translated_text = ''
 
-    def _translate(self, doc):
-        if not self.translate_text:
-            return doc
+        sentences = [phragment for phragment in text.split('.') if phragment]
 
-        translated_doc = []
+        translator_dataset = BaseDataset(sentences)
+        translator_loader = torch.utils.data.DataLoader(
+            translator_dataset, batch_size=self.batch_size, shuffle=False,
+            generator=torch.Generator().manual_seed(42), worker_init_fn=seed_worker
+        )
 
-        paragraphs = doc.split('\n')
-        for paragraph in paragraphs:
-            sentences = [i for i in paragraph.split('.') if i]
-            translator_dataset = BaseDataset(sentences)
-            translator_loader = torch.utils.data.DataLoader(
-                translator_dataset, batch_size=self.batch_size, shuffle=False,
-                generator=torch.Generator().manual_seed(42), worker_init_fn=seed_worker
-            )
+        for batch in translator_loader:
+            # batch = [i for i in batch if i]
+            input_ids = self.tokenizer.prepare_seq2seq_batch(
+                batch, return_tensors='pt', max_length=512, truncation=True
+            ).to(self.device)
 
-            for batch in translator_loader:
-                batch = [i for i in batch]
-                input_ids = self.tokenizer.prepare_seq2seq_batch(
-                    batch, return_tensors="pt", max_length=512, truncation=True
-                ).to(self.device)
+            with torch.no_grad():
+                outputs = self.model.generate(**input_ids)
 
-                with torch.no_grad():
-                    outputs = self.model.generate(**input_ids)
+            translated_text += '. '.join([translated for translated in self.tokenizer.batch_decode(
+                    outputs, skip_special_tokens=True
+                )])
 
-                translated_doc.append(
-                    '. '.join([i for i in self.tokenizer.batch_decode(
-                        outputs, skip_special_tokens=True
-                    )])
-                )
+            del input_ids
 
-                del input_ids
-
-        return '\n'.join(translated_doc)
+        return translated_text

@@ -21,7 +21,7 @@ class QuestionGenerator:
             self,
             cdqa_pipe=None,
             qa_model='bert-large-cased-whole-word-masking-finetuned-squad',
-            qg_model='valhalla/t5-base-qg-hl',
+            qg_model='../t5-base-qg-hl_',
 
             qg_model_path=None,
             qa_model_path=None,
@@ -46,7 +46,7 @@ class QuestionGenerator:
         self._cdqa_pipe = cdqa_pipe
         self._native_lang = native_lang
         self._qg_engine = qg_engine
-        self._kw_model = KeyBERT()
+        self._kw_model = KeyBERT('../all-MiniLM-L6-v2_')
 
         self.keyword_range = (3, 5)
         self.keyword_qty = 8
@@ -64,22 +64,22 @@ class QuestionGenerator:
         if qg_model_path:
             raise BaseException('Sorry, but loading qg_model from your path is not supported now.')
         elif qg_engine == 'transformers':
-            self._qg_tokenizer = T5TokenizerFast.from_pretrained('t5-base')
+            self._qg_tokenizer = T5TokenizerFast.from_pretrained('../t5-base')
             self._qg_model = AutoModelForSeq2SeqLM.from_pretrained(qg_model).to(self.device)
         else:
             raise BaseException(f'Invalid qg_engine {qg_engine}. Supported types: transformers.')
 
-        if qa_model_path:
-            self._qa_model = joblib.load(qa_model_path)
-            for arg in qa_model_args:
-                setattr(self._qa_model.args, arg, qa_model_args[arg])
-        elif qa_engine == 'transformers':
-            self._qa_tokenizer = AutoTokenizer.from_pretrained(qa_model)
-            self._qa_model = AutoModelForQuestionAnswering.from_pretrained(qa_model).to(self.device)
-        else:
-            raise BaseException(f'Invalid qa_engine {qa_engine}. Supported types: transformers.')
+        # if qa_model_path:
+        #     self._qa_model = joblib.load(qa_model_path)
+        #     for arg in qa_model_args:
+        #         setattr(self._qa_model.args, arg, qa_model_args[arg])
+        # elif qa_engine == 'transformers':
+        #     self._qa_tokenizer = AutoTokenizer.from_pretrained(qa_model)
+        #     self._qa_model = AutoModelForQuestionAnswering.from_pretrained(qa_model).to(self.device)
+        # else:
+        #     raise BaseException(f'Invalid qa_engine {qa_engine}. Supported types: transformers.')
 
-    def _generate_questions(self, use_ranker_retriever=True, use_qa=True, save_questions=True, path_to_save=None):
+    def _generate_questions(self, use_ranker_retriever=True, use_qa=False, save_questions=True, path_to_save=None):
         if not use_ranker_retriever and not use_qa:
             raise BaseException('To generate_questions at least one of use_ranker_retriever or use_qa must be True.')
 
@@ -186,8 +186,8 @@ class QuestionGenerator:
 
         for rank, pred in enumerate(rr_preds[0]['output']['answers']):
             pred_answer = pred['translated_answer']
-            retriever_score = pred['scores']['retriever_0_cos_sim']
-            ranker_score = pred['scores']['ranker_0_cos_sim']
+            retriever_score = pred['scores']['retriever_cos_sim']
+            ranker_score = pred['scores']['ranker_cos_sim']
             score = (retriever_score + ranker_score) / 2
 
             if (doc_text in pred_answer and score >= min_rr_treshold and score <= max_rr_treshold and question_statement not in doc_text):

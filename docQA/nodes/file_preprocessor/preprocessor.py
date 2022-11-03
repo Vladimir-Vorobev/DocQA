@@ -35,61 +35,52 @@ class DocProcessor:
                 self.ranker_docs_native = docs_file['ranker_docs_native']
                 self.ranker_docs_translated = docs_file['ranker_docs_translated']
 
-        for link in tqdm(docs_links, ascii=True, desc='Opening docs'):
-            doc = [text for text in open(link, encoding=config.doc_encoding).readlines() if text]
-            doc = ''.join(doc)
-            doc = [text for text in doc.split(self.retriever_sep) if text]
-            if not self.replace_retriever_sep:
-                doc = [self.retriever_sep + text for text in doc]
+        for link in tqdm(docs_links, desc='Opening docs'):
+            with open(link, encoding=config.doc_encoding) as r:
+                doc = r.read()
+                doc = [text for text in doc.split(self.retriever_sep) if text.strip()]
+                if not self.replace_retriever_sep:
+                    doc = [self.retriever_sep + text for text in doc]
 
-            docs.extend(doc)
+                docs.extend(doc)
 
+        all_docs = docs.copy()
         docs = list(set(docs) - set(old_docs))
         if not docs:
             return
 
-        self.retriever_docs_native.extend(
-            [doc.replace('\n', '') for doc in docs if doc != '\n']
-        )
+        self.retriever_docs_native.extend(docs)
 
         self.ranker_docs_native.extend(
-            [self._create_ranker_doc(doc) for doc in tqdm(docs, ascii=True, desc='Grouping docs by paragraphs')]
+            [self._create_ranker_doc(doc) for doc in tqdm(docs, desc='Grouping docs by paragraphs')]
         )
 
         if self.translator:
             self.retriever_docs_translated.extend(
-                [doc for doc in tqdm(
-                    self.translator._translate('\n'.join(docs)).split('\n'),
-                    ascii=True, desc='Translating docs paragraphs'
-                )]
+                [self.translator._translate(doc) for doc in tqdm(docs, desc='Translating docs paragraphs')]
             )
-            self.ranker_docs_translated.extend(
-                [self._create_ranker_doc(doc) for doc in
-                 tqdm(self.retriever_docs_translated, ascii=True, desc='Grouping translated docs by paragraphs')]
-            )
+
+            for doc in tqdm(self.ranker_docs_native, desc='Grouping and translating docs by paragraphs'):
+                translated_doc = []
+
+                for text in doc:
+                    translated_doc.append(self.translator._translate(text))
+
+                self.ranker_docs_translated.append(translated_doc)
 
         docs.extend(old_docs)
 
         with open(config.docs_file_path, 'w') as w:
             w.write(json.dumps({
-                'docs': docs,
-                'retriever_docs_native': self._clean_docs(self.retriever_docs_native),
-                'retriever_docs_translated': self._clean_docs(self.retriever_docs_translated),
-                'ranker_docs_native': self._clean_docs(self.ranker_docs_native, retriever=False),
-                'ranker_docs_translated': self._clean_docs(self.ranker_docs_translated, retriever=False),
+                'docs': all_docs,
+                'retriever_docs_native': self.retriever_docs_native,
+                'retriever_docs_translated': self.retriever_docs_translated,
+                'ranker_docs_native': self.ranker_docs_native,
+                'ranker_docs_translated': self.ranker_docs_translated,
             }))
 
     def _create_ranker_doc(self, doc):
-        return [text for text in list(map(lambda x: x.replace('\n', ''), doc.split(self.ranker_sep))) if text]
-
-    # костыль
-    @staticmethod
-    def _clean_docs(docs, retriever=True):
-        if retriever:
-            return [doc for doc in docs if doc]
-
-        for i in range(len(docs)):
-            docs[i] = [text for text in docs[i] if text]
-
-        return docs
-
+        if self.ranker_sep:
+            return [text for text in doc.split(self.ranker_sep) if text]
+        else:
+            return [doc]

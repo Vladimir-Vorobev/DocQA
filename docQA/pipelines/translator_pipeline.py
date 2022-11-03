@@ -12,12 +12,10 @@ class TranslatorPipeline(BasePipeline, Translator):
             self,
             model_name: str,
             device: str = 'cuda',
-            name : str = 'translator',
-            translate_text: bool = True,
+            name: str = 'translator'
     ):
         BasePipeline.__init__(self)
         Translator.__init__(self, model_name, device)
-        self.translate_text = translate_text
 
     def __call__(
             self,

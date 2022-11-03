@@ -113,7 +113,7 @@ class Pipeline:
 
                 elif node.pipe_type == 'catboost':
                     node.fit(
-                        data, train_previous_outputs, val_previous_outputs, top_n_errors=top_n_errors, pipe=fit_pipe
+                        data.copy(), train_previous_outputs, val_previous_outputs, top_n_errors=top_n_errors, pipe=fit_pipe
                     )
 
             train_previous_outputs = self._call_node(node_name, train_previous_outputs, is_demo=False)

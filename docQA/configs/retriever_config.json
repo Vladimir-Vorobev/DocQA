@@ -7,7 +7,7 @@
     "normalize": true,
     "max_grad_norm": 1,
     "device": "cuda",
-    "epochs": 0,
+    "epochs": 20,
     "training_batch_size": 16,
     "display_progress_bar": true,
     "cossim_scale": 20,
