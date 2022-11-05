@@ -8,6 +8,7 @@ class RankerEmbeddingsModel(BaseSentenceSimilarityEmbeddingsModel):
             optimizer=None,
             loss_func=None,
             config_path='docQA/configs/ranker_config.json',
-            name='ranker'
+            name='ranker',
+            state=None
     ):
-        super().__init__(model, optimizer, loss_func, config_path, name)
+        super().__init__(model, optimizer, loss_func, config_path, name, state)

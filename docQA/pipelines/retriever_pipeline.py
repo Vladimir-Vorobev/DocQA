@@ -20,36 +20,22 @@ class RetrieverPipeline(BasePipeline, RetrieverEmbeddingsModel):
             return_num: int = 30,
             config_path: str = 'docQA/configs/retriever_config.json'
     ):
-        BasePipeline.__init__(self)
-        RetrieverEmbeddingsModel.__init__(self, model, optimizer, loss_func, config_path, name)
-        self.texts = texts
-        self.embeddings = self.encode(texts)
-        self.weight = weight
-        self.return_num = return_num
-
-    def __getstate__(self) -> dict:
-        return {
-            'texts': self.texts,
-            'embeddings': self.embeddings,
-            'name': self.name,
-            'config': self.config,
-            'model': self.model,
-            'tokenizer': self.tokenizer,
-            'optimizer': self.optimizer,
-            'loss_func': self.loss_func,
-            'autocast_type': self.autocast_type,
+        state = {
+            'texts': texts,
+            'model': model,
+            'optimizer': optimizer,
+            'loss_func': loss_func,
+            'weight': weight,
+            'return_num': return_num,
+            'config_path': config_path
         }
 
-    def __setstate__(self, state: dict):
-        self.texts = state['texts']
-        self.embeddings = state['embeddings']
-        self.name = state['name']
-        self.config = state['config']
-        self.model = state['model']
-        self.tokenizer = state['tokenizer']
-        self.optimizer = state['optimizer']
-        self.loss_func = state['loss_func']
-        self.autocast_type = state['autocast_type']
+        BasePipeline.__init__(self)
+        RetrieverEmbeddingsModel.__init__(self, model, optimizer, loss_func, config_path, name, state)
+        self.texts = texts
+        self.weight = weight
+        self.return_num = return_num
+        self.embeddings = self.encode(texts)
 
     def __call__(
             self,

@@ -1,3 +1,4 @@
+from .base_pipeline import BasePipeline
 from docQA.nodes.file_preprocessor import DocProcessor
 from docQA.typing_schemas import PipeOutput, TrainData
 from docQA.errors import PipelineError
@@ -9,24 +10,15 @@ import torch
 import pickle
 
 
-class Pipeline:
+class Pipeline(BasePipeline):
     def __init__(
             self,
             docs_links: List[str] = [],
             doc_processor_config_path: str = 'docQA/configs/processor_config.json',
     ):
+        super().__init__()
         self.preprocessor = DocProcessor(docs_links, doc_processor_config_path)
         self.nodes = {}
-
-    def __getstate__(self) -> dict:
-        return {
-            'preprocessor': self.preprocessor,
-            'nodes': self.nodes
-        }
-
-    def __setstate__(self, state: dict):
-        self.preprocessor = state['preprocessor']
-        self.nodes = state['nodes']
 
     def __call__(
             self,
@@ -42,7 +34,10 @@ class Pipeline:
         for node_name in self.nodes:
             data = self._call_node(node_name, data, is_demo=is_demo, **kwargs)
         if return_output:
-            data = self.modify_output(data, return_translated)
+            data = self.modify_output(
+                data, self.preprocessor.retriever_docs_native,
+                self.preprocessor.retriever_docs_translated, return_translated
+            )
 
             for item in data:
                 item['output']['answers'] = [answer for answer in item['output']['answers'] if answer['total_score'] > threshold]
@@ -89,54 +84,42 @@ class Pipeline:
             dataset, [train_length, val_length], generator=torch.Generator().manual_seed(seed)
         )
 
-        train_previous_outputs = [item['question'] for item in train_dataset]
-        val_previous_outputs = [item['question'] for item in val_dataset]
+        # после этого сломается при ranker_sep != ''
+        train_previous_outputs = self.add_standard_answers(
+            self.standardize_input([item['question'] for item in train_dataset]),
+            len(self.preprocessor.retriever_docs_native)
+        )
 
-        for node_name in self.nodes:
+        val_previous_outputs = self.add_standard_answers(
+            self.standardize_input([item['question'] for item in val_dataset]),
+            len(self.preprocessor.retriever_docs_native)
+        )
+
+        trainable_nodes = [node_name for node_name in self.nodes if not self.nodes[node_name]['is_technical']]
+
+        # добавить ошибку
+        assert trainable_nodes
+
+        for node_name in trainable_nodes:
             item = self.nodes[node_name]
             node = item['node']
-            is_technical = item['is_technical']
 
-            if not is_technical:
-                fit_pipe = Pipeline() if evaluate else None
+            if node.pipe_type in ['retriever', 'ranker']:
+                node.fit(
+                    train_dataset, val_dataset, train_previous_outputs, val_previous_outputs,
+                    self.preprocessor.retriever_docs_native, self.preprocessor.retriever_docs_translated,
+                    top_n_errors=top_n_errors, node=node if evaluate else None, eval_step=eval_step
+                )
 
-                if fit_pipe:
-                    fit_pipe.preprocessor = self.preprocessor
+            elif node.pipe_type == 'catboost':
+                node.fit(
+                    data.copy(), train_previous_outputs, val_previous_outputs,
+                    top_n_errors=top_n_errors
+                )
 
-                    for fit_node_name in [name for name in self.nodes if not self.nodes[name]['demo_only']]:
-                        fit_pipe.nodes[fit_node_name] = self.nodes[fit_node_name]
-                        if fit_node_name == node_name:
-                            break
-
-                if node.pipe_type in ['retriever', 'ranker']:
-                    node.fit(train_dataset, val_dataset, top_n_errors=top_n_errors, pipe=fit_pipe, eval_step=eval_step)
-
-                elif node.pipe_type == 'catboost':
-                    node.fit(
-                        data.copy(), train_previous_outputs, val_previous_outputs, top_n_errors=top_n_errors, pipe=fit_pipe
-                    )
-
-            train_previous_outputs = self._call_node(node_name, train_previous_outputs, is_demo=False)
-            val_previous_outputs = self._call_node(node_name, val_previous_outputs, is_demo=False)
-
-    def modify_output(self, data, return_translated=False):
-        if isinstance(data, dict):
-            return data
-
-        for item in data:
-            for answer_index in range(len(item['output']['answers'])):
-                answer = item['output']['answers'][answer_index]
-                answer['total_score'] /= answer['weights_sum'] if answer['weights_sum'] else 1
-                new_answer = {'answer': self.preprocessor.retriever_docs_native[answer['index']]}
-
-                if return_translated and self.preprocessor.retriever_docs_translated:
-                    new_answer['translated_answer'] = self.preprocessor.retriever_docs_translated[answer['index']]
-
-                del answer['index'], answer['weights_sum']
-                new_answer.update(answer)
-                item['output']['answers'][answer_index] = new_answer
-
-        return data
+            if node_name != trainable_nodes[-1]:
+                train_previous_outputs = self._call_node(node_name, train_previous_outputs, is_demo=False)
+                val_previous_outputs = self._call_node(node_name, val_previous_outputs, is_demo=False)
 
     def _call_node(self, node_name, data, is_demo=True, **kwargs):
         demo_only = self.nodes[node_name]['demo_only']
@@ -148,13 +131,9 @@ class Pipeline:
         return data
 
     def save(self, fine_name: str = 'pipeline.pkl'):
-        b = pickle.dumps(self)
-        k = pickle.loads(b)
-        print(k)
-
         with open(fine_name, 'wb') as w:
-            pickle.dump({'nodes': getattr(self, 'nodes'), 'preprocessor': getattr(self, 'preprocessor')}, w)
+            pickle.dump(self, w)
 
     def load(self, fine_name):
         with open(fine_name, 'rb') as r:
-            k = pickle.load(r)
+            self.__dict__ = pickle.load(r).__dict__

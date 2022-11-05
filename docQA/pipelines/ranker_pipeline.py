@@ -20,8 +20,18 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
             return_num: int = 10,
             config_path: str = 'docQA/configs/ranker_config.json'
     ):
+        state = {
+            'texts': texts,
+            'model': model,
+            'optimizer': optimizer,
+            'loss_func': loss_func,
+            'weight': weight,
+            'return_num': return_num,
+            'config_path': config_path
+        }
+
         BasePipeline.__init__(self)
-        RankerEmbeddingsModel.__init__(self, model, optimizer, loss_func, config_path, name)
+        RankerEmbeddingsModel.__init__(self, model, optimizer, loss_func, config_path, name, state)
         self.texts = texts
         self.weight = weight
         self.return_num = return_num
@@ -42,9 +52,9 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
 
         for index in range(len(data)):
             answers = data[index]['output']['answers']
-            # will lead to a bug [data[index]['modified_input'], *[self.texts[answer['index']][0] for answer in answers
+
             embeddings = self.encode(
-                [data[index]['modified_input'], *[self.texts[answer['index']][0] for answer in answers if self.texts[answer['index']]]]
+                [data[index]['modified_input'], *[self.texts[answer['index']][0] for answer in answers]]
             )
 
             for answer_index, embedding in zip(range(len(answers)), embeddings[1:]):

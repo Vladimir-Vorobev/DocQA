@@ -10,6 +10,7 @@ import json
 import catboost
 import numpy as np
 import pandas as pd
+from copy import deepcopy
 
 
 class CatboostPipeline(BasePipeline):
@@ -70,24 +71,23 @@ class CatboostPipeline(BasePipeline):
     def fit(
             self,
             data,
-            train_dataset,
-            val_dataset,
+            train_previous_outputs,
+            val_previous_outputs,
             top_n_errors=None,
-            pipe=None
     ):
         # assert previous_outputs and previous_outputs[0]['output']['answers'] \
         #        and previous_outputs[0]['output']['answers'][0]['scores'], PipelineError(
         #            'To use CatboostPipeline you should have non-technical nodes in Pipeline before this pipeline.'
         #        )
 
-        if not top_n_errors or not pipe:
-            top_n_errors = {}
+        if not top_n_errors:
+            top_n_errors = []
 
         data = {item['question']: item['native_context'] for item in data}
 
-        train_dataset = self.standardize_input(train_dataset)
+        train_dataset = self.standardize_input(deepcopy(train_previous_outputs))
         train_dataset = self.add_standard_answers(train_dataset, len(self.texts))
-        val_dataset = self.standardize_input(val_dataset)
+        val_dataset = self.standardize_input(deepcopy(val_previous_outputs))
         val_dataset = self.add_standard_answers(val_dataset, len(self.texts))
 
         train_top_n_errors = {}
@@ -104,27 +104,34 @@ class CatboostPipeline(BasePipeline):
         train_dataset, val_dataset = self._create_dataset(train_dataset), self._create_dataset(val_dataset)
 
         X_train, y_train = train_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
-        X_val, y_val = val_dataset.drop('is_correct', axis=1), train_dataset['is_correct']
 
-        for _ in tqdm(range(1), desc=f'Fine tuning {self.pipe_type}'):
+        for _ in tqdm(range(1), desc=f'Fine tuning {self.name}'):
             self.model.fit(X_train, y_train, text_features=['question', 'answer'], silent=True)
 
-            train_questions = np.unique(X_train['question'])
-            native_contexts = [data[question] for question in train_questions]
-            pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in train_questions]
-            train_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
+            if top_n_errors:
+                return_num = max(top_n_errors)
 
-            if pipe:
-                val_questions = np.unique(X_val['question'])
+                train_questions = [output['modified_input'] for output in train_previous_outputs]
+                native_contexts = [data[question] for question in train_questions]
+                pred_contexts = self.__call__(train_previous_outputs, return_num=return_num)
+                train_top_n_errors = top_n_qa_error(
+                    native_contexts,
+                    self.modify_output(pred_contexts.copy(), self.native_texts, self.texts), top_n_errors
+                )
+
+                val_questions = [output['modified_input'] for output in val_previous_outputs]
                 native_contexts = [data[question] for question in val_questions]
-                pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in val_questions]
-                val_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
+                pred_contexts = self.__call__(val_previous_outputs, return_num=return_num)
+                val_top_n_errors = top_n_qa_error(
+                    native_contexts,
+                    self.modify_output(pred_contexts.copy(), self.native_texts, self.texts), top_n_errors
+                )
 
-        with open(f'docs/{self.name}_fitting_results.json', 'w') as w:
-            w.write(json.dumps({
-                'train_top_n_errors_history': train_top_n_errors,
-                'val_top_n_errors_history': val_top_n_errors,
-            }))
+                with open(f'docs/{self.name}_fitting_results.json', 'w') as w:
+                    w.write(json.dumps({
+                        'train_top_n_errors_history': train_top_n_errors,
+                        'val_top_n_errors_history': val_top_n_errors,
+                    }))
 
         return train_top_n_errors, val_top_n_errors
 

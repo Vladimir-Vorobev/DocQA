@@ -8,6 +8,7 @@ class RetrieverEmbeddingsModel(BaseSentenceSimilarityEmbeddingsModel):
             optimizer=None,
             loss_func=None,
             config_path='docQA/configs/retriever_config.json',
-            name='retriever'
+            name='retriever',
+            state=None,
     ):
-        super().__init__(model, optimizer, loss_func, config_path, name)
+        super().__init__(model, optimizer, loss_func, config_path, name, state)

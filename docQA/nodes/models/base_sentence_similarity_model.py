@@ -1,3 +1,4 @@
+from docQA.mixins import ModifyOutputMixin
 from docQA.configs import ConfigParser
 from docQA.utils.visualization import visualize_fitting
 from docQA.utils import seed_worker, batch_to_device
@@ -17,9 +18,10 @@ from transformers import (
 
 from tqdm.autonotebook import tqdm, trange
 import numpy as np
+from copy import deepcopy
 
 
-class BaseSentenceSimilarityEmbeddingsModel:
+class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
     def __init__(
             self,
             model=None,
@@ -27,8 +29,11 @@ class BaseSentenceSimilarityEmbeddingsModel:
             loss_func=None,
             config_path='',
             name='',
+            child_state=None,
     ):
+        self.child_state = child_state
         self.name = name
+        self.config_path = config_path
         self._config = ConfigParser(config_path)
 
         if model:
@@ -54,6 +59,32 @@ class BaseSentenceSimilarityEmbeddingsModel:
             self.loss_func = torch.nn.CrossEntropyLoss()
 
         self.best_model = self.model
+
+    def __getstate__(self):
+        return {
+            'model': self.config.model_name,
+            'optimizer': self.optimizer,
+            'loss_func': self.loss_func,
+            'config_path': self.config_path,
+            'name': self.name,
+            'child_state': self.child_state
+        }
+
+    def __setstate__(self, state):
+        if type(self) == type(BaseSentenceSimilarityEmbeddingsModel):
+            self.__init__(**state)
+
+        else:
+            child_state = state['child_state']
+            del state['child_state']
+
+            BaseSentenceSimilarityEmbeddingsModel.__init__(self, **state)
+            self.texts = child_state['texts']
+            self.weight = child_state['weight']
+            self.return_num = child_state['return_num']
+
+            if 'retriever_pipeline.RetrieverPipeline' in str(type(self)):
+                self.embeddings = self.encode(child_state['texts'])
 
     @property
     def config(self):
@@ -88,9 +119,20 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
         return embeddings.cpu()
 
-    def fit(self, train_dataset, val_dataset, top_n_errors=None, pipe=None, eval_step=5):
-        if not top_n_errors or not pipe:
-            top_n_errors = {}
+    def fit(
+            self,
+            train_dataset,
+            val_dataset,
+            train_previous_outputs,
+            val_previous_outputs,
+            native_texts,
+            translated_texts,
+            top_n_errors=None,
+            node=None,
+            eval_step=5
+    ):
+        if not top_n_errors or not node:
+            top_n_errors = []
 
         self.config.is_training = True
         self.model.train()
@@ -111,15 +153,17 @@ class BaseSentenceSimilarityEmbeddingsModel:
         val_top_n_errors_history = {n: [] for n in top_n_errors}
 
         for epoch in tqdm(range(self.config.epochs), desc=f'Fine tuning {self.name}'):
-            do_evaluate = epoch == 0 or not (epoch + 1) % eval_step
+            do_evaluation = epoch == 0 or not (epoch + 1) % eval_step
 
             train_loss_sum, train_top_n_errors = self.epoch_step(
-                train_loader, top_n_errors=top_n_errors, pipe=pipe if do_evaluate else None
+                train_loader, train_previous_outputs, native_texts, translated_texts,
+                top_n_errors=top_n_errors, node=node
             )
 
             with torch.no_grad():
                 val_loss_sum, val_top_n_errors = self.epoch_step(
-                    val_loader, top_n_errors=top_n_errors, train=False, pipe=pipe if do_evaluate else None
+                    val_loader, val_previous_outputs, native_texts, translated_texts,
+                    top_n_errors=top_n_errors, node=node, train=False
                 )
 
             train_loss_sum /= self.config.training_batch_size
@@ -135,7 +179,7 @@ class BaseSentenceSimilarityEmbeddingsModel:
                 }, self.name, x_label='epoch', y_label='loss'
             )
 
-            if do_evaluate:
+            if do_evaluation:
                 for n in top_n_errors:
                     train_top_n_errors_history[n].append(train_top_n_errors[n])
                     val_top_n_errors_history[n].append(val_top_n_errors[n])
@@ -165,22 +209,24 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
         return train_loss_history, val_loss_history
 
-    def epoch_step(self, loader, top_n_errors, train=True, pipe=None):
-        questions = []
-        contexts = []
-        native_contexts = []
+    def epoch_step(self, loader, previous_outputs, native_texts, translated_texts, top_n_errors, node, train=True):
+        validation_data = {}
         epoch_top_n_errors = {}
         loss_sum = 0
 
         for batch in loader:
-            questions.extend(batch['question'])
-            contexts.extend(batch['context'])
-            native_contexts.extend(batch['native_context'])
+            for question, native_context in zip(batch['question'], batch['native_context']):
+                validation_data[question] = native_context
 
-            question = self.tokenizer([item for item in batch['question']], return_tensors="pt",
-                                      max_length=self.config.max_question_length, truncation=True, padding="max_length")
-            context = self.tokenizer([item for item in batch['context']], return_tensors="pt",
-                                     max_length=self.config.max_length, truncation=True, padding="max_length")
+            question = self.tokenizer(
+                [item for item in batch['question']], return_tensors="pt",
+                max_length=self.config.max_question_length, truncation=True, padding="max_length"
+            )
+
+            context = self.tokenizer(
+                [item for item in batch['context']], return_tensors="pt",
+                max_length=self.config.max_length, truncation=True, padding="max_length"
+            )
 
             with torch.autocast(device_type="cuda", dtype=self.autocast_type):
                 embeddings_question = self.forward(**question.to(self.config.device))
@@ -199,13 +245,20 @@ class BaseSentenceSimilarityEmbeddingsModel:
 
             loss_sum += float(loss)
 
-        if pipe:
+        if node:
             self.config.is_training = False
             self.model.eval()
 
+            return_num = max(top_n_errors)
+
             with torch.autocast(device_type="cuda", dtype=self.autocast_type):
-                pred_contexts = [pipe.__call__(question, threshold=0, is_demo=False)[0] for question in questions]
-                epoch_top_n_errors = top_n_qa_error(native_contexts, pred_contexts, top_n_errors)
+                questions = [output['modified_input'] for output in previous_outputs]
+                native_contexts = [validation_data[question] for question in questions]
+                pred_contexts = node(deepcopy(previous_outputs), return_num=return_num)
+                epoch_top_n_errors = top_n_qa_error(
+                    native_contexts,
+                    self.modify_output(pred_contexts, native_texts, translated_texts), top_n_errors
+                )
 
             self.config.is_training = True
             self.model.train()

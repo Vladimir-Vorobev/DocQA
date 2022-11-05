@@ -1,3 +1,4 @@
+from docQA.mixins import ModifyOutputMixin
 from docQA.typing_schemas import PipeOutput
 from docQA.errors import PipelineError
 
@@ -5,7 +6,7 @@ from typing import List, Union, Any
 from copy import deepcopy
 
 
-class BasePipeline:
+class BasePipeline(ModifyOutputMixin):
     pipe_type = 'base'
 
     def __init__(self):
