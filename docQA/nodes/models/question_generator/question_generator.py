@@ -87,10 +87,8 @@ class QuestionGenerator:
 
         for doc, native_doc in zip(tqdm(self._docs, ascii=True, desc='Generating questions'), self._native_docs):
             doc_text = doc['input_text']
-            ##
             if len(doc_text.split()) < self.min_tokens_qty:
                 continue
-            ##
 
             keywords = self._extract_keywords(doc_text, self.keyword_range, self.keyword_qty)
 
@@ -105,7 +103,7 @@ class QuestionGenerator:
                 continue
 
             for question in questions:
-                question_statement = question['question_statement']
+                question_statement = question['question_statement'].replace('<unk>', '').replace('hl>', '').replace('  ', ' ').strip()
                 question_context = question['context']
                 result = self._question_checker(
                     question_statement, question_context, doc_text, native_doc,

@@ -76,7 +76,6 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
 
         else:
             child_state = state['child_state']
-            del state['child_state']
 
             BaseSentenceSimilarityEmbeddingsModel.__init__(self, **state)
             self.texts = child_state['texts']
