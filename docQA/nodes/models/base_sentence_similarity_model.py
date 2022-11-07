@@ -4,6 +4,7 @@ from docQA.utils.visualization import visualize_fitting
 from docQA.utils import seed_worker, batch_to_device
 from docQA.errors import DeviceError, SentenceEmbeddingsModelError
 from docQA.metrics import top_n_qa_error
+from docQA.typing_schemas import PipeOutputElement
 from docQA import seed
 
 import joblib
@@ -16,21 +17,33 @@ from transformers import (
     AutoTokenizer,
 )
 
+from typing import Any, List
 from tqdm.autonotebook import tqdm, trange
 import numpy as np
 from copy import deepcopy
 
 
 class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
+    """
+    A backbone for Retriever and Ranker sentence similarity algorithms
+    """
     def __init__(
             self,
-            model=None,
-            optimizer=None,
-            loss_func=None,
-            config_path='',
-            name='',
-            child_state=None,
+            model: str = None,
+            optimizer: Any = None,
+            loss_func: Any = None,
+            config_path: str = '',
+            name: str = '',
+            child_state: dict = None,
     ):
+        """
+        :param model: a name/path for a backbone sentence similarity model
+        :param optimizer: an optimizer for the backbone model
+        :param loss_func: a loss function for the backbone model
+        :param config_path: a config path for the whole algorithm
+        :param name: a user's name of this node in Pipeline
+        :param child_state: a child state to load during unpickling
+        """
         self.child_state = child_state
         self.name = name
         self.config_path = config_path
@@ -103,7 +116,7 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
 
         # удалить при поддержке cpu
         if 'device' in config:
-            assert config['device'] != 'cuda', DeviceError(config['device'])
+            assert config['device'] == 'cuda', DeviceError(config['device'])
 
         for arg in config:
             setattr(self._config, arg, config[arg])
@@ -120,17 +133,31 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
 
     def fit(
             self,
-            train_dataset,
-            val_dataset,
-            train_previous_outputs,
-            val_previous_outputs,
-            native_texts,
-            translated_texts,
-            top_n_errors=None,
-            node=None,
-            eval_step=5,
-            storage_path=''
+            train_dataset: list,
+            val_dataset: list,
+            train_previous_outputs: List[PipeOutputElement],
+            val_previous_outputs: List[PipeOutputElement],
+            native_texts: list,
+            translated_texts: list,
+            top_n_errors: list = None,
+            node: Any = None,
+            eval_step: int = 5,
+            storage_path: str = ''
     ):
+        """
+        Fit the backbone model
+        :param train_dataset: a dataset list
+        :param val_dataset: a dataset list
+        :param train_previous_outputs: train list of PipeOutputElement elements
+        :param val_previous_outputs: val list of PipeOutputElement elements
+        :param native_texts: a list of native texts
+        :param translated_texts: a list of translated texts
+        :param top_n_errors: a list of top-n errors for scoring
+        :param node: a pipeline which uses this class as a backbone
+        :param eval_step: an interval of epochs when evaluation should be done
+        :param storage_path: a path to storage with documents which was created by the Storage class
+        :return train loss history, val loss history, train top-n errors history, val top-n errors history
+        """
         if not top_n_errors or not node:
             top_n_errors = []
 
@@ -209,9 +236,28 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
         self.config.is_training = False
         self.model.eval()
 
-        return train_loss_history, val_loss_history
+        return train_loss_history, val_loss_history, train_top_n_errors_history, val_top_n_errors_history
 
-    def epoch_step(self, loader, previous_outputs, native_texts, translated_texts, top_n_errors, node, train=True):
+    def epoch_step(
+            self,
+            loader: Any,
+            previous_outputs: List[PipeOutputElement],
+            native_texts: list,
+            translated_texts: list,
+            top_n_errors: list,
+            node: Any,
+            train: bool = True
+    ):
+        """
+        :param loader: dataset torch loader
+        :param previous_outputs: a list of PipeOutputElement elements
+        :param native_texts: a list of native texts
+        :param translated_texts: a list of translated texts
+        :param top_n_errors: a list of top-n errors
+        :param node: a pipeline which uses this class as a backbone
+        :param train: a flag if it is a step of a train or a val epoch
+        :return: epoch loss and top-n errors
+        """
         validation_data = {}
         epoch_top_n_errors = {}
         loss_sum = 0
@@ -268,6 +314,11 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
         return loss_sum, epoch_top_n_errors
 
     def encode(self, sentences):
+        """
+        Encode the input via the backbone model
+        :param sentences: a list of str
+        :return: a list of str embeddings
+        """
         assert not self.config.is_training, SentenceEmbeddingsModelError('evaluating')
         self.model.eval()
 
@@ -288,6 +339,9 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
 
     @staticmethod
     def mean_pooling(model_output, attention_mask):
+        """
+        Technical pooling method
+        """
         token_embeddings = model_output[0]
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)

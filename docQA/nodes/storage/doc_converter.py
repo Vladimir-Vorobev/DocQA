@@ -4,8 +4,18 @@ import subprocess
 
 
 class DocConverter:
+    """
+    A class to convert different docs into a .txt doc
+    """
     @staticmethod
-    def convert_doc(filepath, filepath_to_save, encoding='utf-8'):
+    def convert_doc(filepath: str, filepath_to_save: str, encoding: str = 'utf-8'):
+        """
+        A method which can convert .docx, .doc, .rtf, .txt into .txt
+        :param filepath: what file should be converted
+        :param filepath_to_save: where to save converted .txt file
+        :param encoding: what encoding to use
+        :return: filepath of the converted doc
+        """
         if filepath.endswith('.docx'):
             text = docx2txt.process(filepath)
             with open(filepath_to_save.replace('.docx', '.txt'), 'w', encoding=encoding) as w:

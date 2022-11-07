@@ -1,5 +1,5 @@
 from docQA.errors import QgError
-from docQA.pipelines import Pipeline, TranslatorPipeline
+from docQA.pipelines import TranslatorPipeline
 
 from keybert import KeyBERT
 from transformers import (
@@ -12,6 +12,7 @@ from transformers import (
 import torch
 import pandas as pd
 from tqdm.autonotebook import tqdm
+from typing import Any
 
 
 class QuestionGenerator:
@@ -20,7 +21,7 @@ class QuestionGenerator:
     """
     def __init__(
             self,
-            pipe: Pipeline = None,
+            pipe: Any = None,
             qa_model: str = 'bert-large-cased-whole-word-masking-finetuned-squad',
             qg_model: str = 'valhalla/t5-base-qg-hl',
             kw_model: str = 'sentence-transformers/all-MiniLM-L6-v2',
@@ -77,7 +78,18 @@ class QuestionGenerator:
         self.qa_tokenizer = AutoTokenizer.from_pretrained(qa_model)
         self.qa_model = AutoModelForQuestionAnswering.from_pretrained(qa_model).to(self.device)
 
-    def generate_questions(self, use_ranker_retriever=True, use_qa=False, save_questions=True, path_to_save=None):
+    def generate_questions(
+            self,
+            path_to_save: str = 'dataset.csv',
+            use_ranker_retriever: bool = True,
+            use_qa: bool = False
+    ):
+        """
+        A method to generate artificial dataset for documents from a pipe storage
+        :param path_to_save: a path where to save a generated dataset
+        :param use_ranker_retriever: a flag if user wants to use Retriever-Ranker algorithm to validate a generated question or not
+        :param use_qa: a flag if user wants to use QA-model to validate generated question or not
+        """
         assert use_ranker_retriever or use_qa, QgError(
             'To generate_questions at least one of use_ranker_retriever or use_qa must be True.'
         )
@@ -112,16 +124,28 @@ class QuestionGenerator:
                 if result:
                     outputs.append(result)
         
-        if save_questions:
-            pd.DataFrame(outputs).to_csv(path_to_save)
+        pd.DataFrame(outputs).to_csv(path_to_save)
 
-    def extract_keywords(self, text, key_phrase_ngram_range, top_n):
+    def extract_keywords(self, text: str, key_phrase_ngram_range: tuple, top_n: int):
+        """
+        A method to extract keywords from a text to use them as answers for QG-model
+        :param text: a text from which keywords are extracted
+        :param key_phrase_ngram_range: extract phrases with this ngram range
+        :param top_n: a maximum number of keywords to extract
+        :return: a list of extracted keyword phrases
+        """
         return self.kw_model.extract_keywords(
             text, keyphrase_ngram_range=key_phrase_ngram_range, use_maxsum=False, use_mmr=False, top_n=top_n
         )
 
     @staticmethod
-    def prepare_candidates(keywords, text):
+    def prepare_candidates(keywords: list, text: str):
+        """
+        A technical method to prepare keywords to be used in QG-model
+        :param keywords: a list of generated keywords
+        :param text: a text from which keywords have been generated
+        :return: a list of candidates which can be used in QG-model
+        """
         candidates = []
 
         for keyword in keywords:
@@ -139,7 +163,12 @@ class QuestionGenerator:
 
         return candidates
 
-    def generate(self, candidates):
+    def generate(self, candidates: list):
+        """
+        A method where QG-model generates questions from candidates
+        :param candidates: a list of extracted and preprocessed candidates
+        :return: a list of dicts with generated question statements for contexts
+        """
         questions = []
 
         tokens = self.qg_tokenizer(
@@ -163,8 +192,28 @@ class QuestionGenerator:
         return [{'question_statement': question[0], 'context': question[1]} for question in set(questions)]
 
     def question_checker(
-            self, question_statement, question_answer, doc_text, native_doc, use_ranker_retriever, use_qa, min_rr_threshold, max_rr_threshold
+            self,
+            question_statement: str,
+            question_answer: str,
+            doc_text: str,
+            native_doc: str,
+            use_ranker_retriever: bool,
+            use_qa: bool,
+            min_rr_threshold: float,
+            max_rr_threshold: float
     ):
+        """
+        An algorithm to check if generated question is acceptable or not
+        :param question_statement: a generated question
+        :param question_answer: a generated answer for the question statement by QG-model
+        :param doc_text: a context for which the question has been generated
+        :param native_doc: a native version of doc_text
+        :param use_ranker_retriever: a flag to use Retriever-Ranker algorithm for question validation or not
+        :param use_qa: a flag to use QA-model for question validation or not
+        :param min_rr_threshold: minimum cosine similarity score for generated question to be accepted by Retriever-Ranker algorithm
+        :param max_rr_threshold: a maximum cosine similarity score for generated question to be accepted by Retriever-Ranker algorithm
+        :return: a dict item to write in a dataset
+        """
         if use_ranker_retriever:
             for result in self.ranker_retriever_question_checker(question_statement, doc_text, native_doc, min_rr_threshold, max_rr_threshold):
                 if use_qa:
@@ -179,9 +228,23 @@ class QuestionGenerator:
             if result:
                 return result
 
-        return None
-
-    def ranker_retriever_question_checker(self, question_statement, doc_text, native_doc, min_rr_threshold, max_rr_threshold):
+    def ranker_retriever_question_checker(
+            self,
+            question_statement: str,
+            doc_text: str,
+            native_doc: str,
+            min_rr_threshold: float,
+            max_rr_threshold: float
+    ):
+        """
+        A Retriever-Ranker algorithm to validate a generated question
+        :param question_statement: a generated question
+        :param doc_text: a context for which the question has been generated
+        :param native_doc: a native version of doc_text
+        :param min_rr_threshold: minimum cosine similarity score for generated question to be accepted by Retriever-Ranker algorithm
+        :param max_rr_threshold: a maximum cosine similarity score for generated question to be accepted by Retriever-Ranker algorithm
+        :return: a dict item to write in a dataset
+        """
         rr_preds = self.pipe(question_statement, return_translated=True)
         native_question_statement = self.back_translator(question_statement, standardized=False)[0] if \
             self.back_translator else question_statement
@@ -203,7 +266,21 @@ class QuestionGenerator:
                     'rank': rank + 1,
                 }
 
-    def qa_question_checker(self, doc_text, question_statement, question_answer, result=None):
+    def qa_question_checker(
+            self,
+            doc_text: str,
+            question_statement: str,
+            question_answer: str,
+            result: dict = None
+    ):
+        """
+        A QA-model algorithm to validate a generated question
+        :param doc_text: a context for which the question has been generated
+        :param question_statement: a generated question
+        :param question_answer: a generated answer for the question statement by QG-model
+        :param result: a previous validator result or None
+        :return: a dict item to write in a dataset or None
+        """
         inputs = self.qa_tokenizer(question_statement, doc_text, return_tensors="pt").to('cuda')
 
         with torch.no_grad():

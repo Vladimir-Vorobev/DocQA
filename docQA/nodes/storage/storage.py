@@ -17,8 +17,14 @@ class Storage:
         storage_path: str = '',
         storage_name: str = 'base',
         docs_links: list = [],
-        config_path='docQA/configs/storage_config.json'
+        config_path: str = 'docQA/configs/storage_config.json'
     ):
+        """
+        :param storage_path: a path where to save the storage
+        :param storage_name: how to name a storage folder
+        :param docs_links: what docs to store and process in the storage
+        :param config_path: a path to the storage config
+        """
         self.config = ConfigParser(config_path)
         self.doc_converter = DocConverter
         self.retriever_docs_native = []
@@ -86,6 +92,11 @@ class Storage:
         self.test_loader = None
 
     def _process_doc(self, link: str):
+        """
+        A method to process a doc to be used in Retriever and Ranker pipelines
+        :param link: a link to the doc .txt file
+        :return: document preprocessed outputs
+        """
         with open(link, encoding=self.config.doc_encoding) as r:
             doc = r.read()
             doc = [text for text in doc.split(self.config.retriever_sep) if text.strip()]
@@ -117,6 +128,10 @@ class Storage:
         }
 
     def add_documents(self, docs_links: list):
+        """
+        Add and preprocess new documents to the storage
+        :param docs_links: links to the documents
+        """
         docs = []
         self.retriever_docs_native = []
         self.retriever_docs_translated = []
@@ -156,12 +171,20 @@ class Storage:
         self.ranker_range = files['ranker_range']
 
     def get_documents_names(self):
+        """
+        Get all storage document names
+        :return: list of all storage document names
+        """
         with open(f'{self.storage_path}/storage_data.json', 'r') as r:
             json_decoded = json.load(r)
 
         return list(json_decoded['documents'].keys())
 
     def del_document(self, doc_name: str):
+        """
+        Delete a document from the storage by name
+        :param doc_name: document name in the storage
+        """
         docs = []
         self.retriever_docs_native = []
         self.retriever_docs_translated = []
@@ -197,7 +220,13 @@ class Storage:
         self.retriever_range = files['retriever_range']
         self.ranker_range = files['ranker_range']
 
-    def add_dataset(self, link: str, name: str, only_for_benchmark: bool = False):
+    def add_dataset(self, link: str, name: str, is_benchmark: bool = False):
+        """
+        Add train/benchmark dataset to the storage
+        :param link: a link to .csv dataset file
+        :param name: how to name the dataset in the storage
+        :param is_benchmark: a flag if this dataset is a benchmark
+        """
         dataset = pd.read_csv(link)
 
         with open(f'{self.storage_path}/storage_data.json', 'r') as r:
@@ -206,7 +235,7 @@ class Storage:
         assert (name not in json_decoded['datasets']['train_data'] and
                 name not in json_decoded['datasets']['benchmark_data']), 'Dataset name already exists'
 
-        code = 'benchmark_data' if only_for_benchmark else 'train_data'
+        code = 'benchmark_data' if is_benchmark else 'train_data'
 
         json_decoded['datasets'][code][name] = {
             'translated_question': list(dataset['translated_question']),
@@ -219,6 +248,10 @@ class Storage:
             json.dump(json_decoded, w)
 
     def del_dataset(self, name: str):
+        """
+        Delete dataset from the storage by name
+        :param name: a dataset name in the storage
+        """
         with open(f'{self.storage_path}/storage_data.json') as r:
             json_decoded = json.load(r)
 
@@ -234,6 +267,10 @@ class Storage:
             json.dump(json_decoded, w)
     
     def get_datasets_names(self):
+        """
+        Get a list of all dataset names in the storage
+        :return: a dict with all train and benchmark dataset names
+        """
         with open(f'{self.storage_path}/storage_data.json', 'r') as r:
             json_decoded = json.load(r)
 
@@ -250,6 +287,14 @@ class Storage:
             shuffle=False,
             seed=42
     ):
+        """
+        Make data loaders from all datasets in the storage
+        :param val_size: a size of the evaluation part
+        :param batch_size: loader batch size
+        :param num_workers: loader num workers
+        :param shuffle: a flag to shuffle dataset data or not
+        :param seed: loader random seed
+        """
         with open(f'{self.storage_path}/storage_data.json', 'r') as r:
             json_decoded = json.load(r)
 
@@ -275,7 +320,12 @@ class Storage:
             benchmark_data, batch_size=1, num_workers=num_workers
         ))
 
-    def _unpack_data(self, data):
+    def _unpack_data(self, data: dict):
+        """
+
+        :param data:
+        :return:
+        """
         unpacked_data = []
 
         for name in data:
@@ -290,7 +340,12 @@ class Storage:
             ])
         return unpacked_data
 
-    def _create_ranker_doc(self, doc):
+    def _create_ranker_doc(self, doc: str):
+        """
+        A technical ranker doc creator method
+        :param doc: a text of a ranker doc
+        :return:
+        """
         if self.config.ranker_sep:
             return [text for text in doc.split(self.config.ranker_sep) if text]
         else:
