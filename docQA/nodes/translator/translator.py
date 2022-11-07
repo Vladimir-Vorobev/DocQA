@@ -1,5 +1,6 @@
 from docQA.utils.torch.dataset import BaseDataset
 from docQA.utils.utils import seed_worker
+from docQA import seed
 
 import torch
 from transformers import (
@@ -9,29 +10,28 @@ from transformers import (
 
 
 class Translator:
-    def __init__(self, model_name, device='cuda'):
+    def __init__(self, model_name, max_length=512, num_beams=5, batch_size=8, device='cuda'):
         self.model = FSMTForConditionalGeneration.from_pretrained(model_name).to(device)
-        self.model.config.max_length = 512
-        self.model.config.num_beams = 5
+        self.model.config.max_length = max_length
+        self.model.config.num_beams = num_beams
         self.tokenizer = FSMTTokenizer.from_pretrained(model_name)
         self.device = device
-        self.batch_size = 8
+        self.batch_size = batch_size
 
     def _translate(self, text: str):
         translated_text = ''
 
-        sentences = [phragment for phragment in text.split('.') if phragment]
+        sentences = [fragment for fragment in text.split('.') if fragment]
 
         translator_dataset = BaseDataset(sentences)
         translator_loader = torch.utils.data.DataLoader(
             translator_dataset, batch_size=self.batch_size, shuffle=False,
-            generator=torch.Generator().manual_seed(42), worker_init_fn=seed_worker
+            generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
         )
 
         for batch in translator_loader:
-            # batch = [i for i in batch if i]
-            input_ids = self.tokenizer.prepare_seq2seq_batch(
-                batch, return_tensors='pt', max_length=512, truncation=True
+            input_ids = self.tokenizer(
+                batch, return_tensors='pt', max_length=self.model.config.max_length , padding=True, truncation=True
             ).to(self.device)
 
             with torch.no_grad():

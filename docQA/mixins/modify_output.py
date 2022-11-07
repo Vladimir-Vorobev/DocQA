@@ -1,9 +1,27 @@
-class ModifyOutputMixin:
-    @staticmethod
-    def modify_output(data, texts, translated_texts=None, return_translated=False):
-        if isinstance(data, dict):
-            return data
+from docQA.typing_schemas import PipeOutputElement
 
+from typing import List
+
+
+class ModifyOutputMixin:
+    """
+    A mixin for BasePipeline and BaseSentenceSimilarityModel
+    """
+    @staticmethod
+    def modify_output(
+            data: List[PipeOutputElement],
+            texts: list,
+            translated_texts: list = None,
+            return_translated: bool = False
+    ):
+        """
+        Modifies pipelines outputs indexes into texts
+        :param data: a list of PipeOutputElement elements
+        :param texts: a list of native texts from storage
+        :param translated_texts: translated versions of texts if user wants to see them instead of native versions
+        :param return_translated: a flag if user wants to see translated texts
+        :return:
+        """
         for item in data:
             for answer_index in range(len(item['output']['answers'])):
                 answer = item['output']['answers'][answer_index]

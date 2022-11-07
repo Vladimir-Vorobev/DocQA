@@ -11,7 +11,7 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
 
     def __init__(
             self,
-            texts: List[str],
+            texts: List[str] = None,
             model: str = None,
             optimizer: Any = None,
             loss_func: Any = None,
@@ -54,7 +54,7 @@ class RankerPipeline(BasePipeline, RankerEmbeddingsModel):
             answers = data[index]['output']['answers']
 
             embeddings = self.encode(
-                [data[index]['modified_input'], *[self.texts[answer['index']][0] for answer in answers]]
+                [data[index]['modified_input'], *[self.texts[answer['index']] for answer in answers]]
             )
 
             for answer_index, embedding in zip(range(len(answers)), embeddings[1:]):

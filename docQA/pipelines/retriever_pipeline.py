@@ -11,7 +11,7 @@ class RetrieverPipeline(BasePipeline, RetrieverEmbeddingsModel):
 
     def __init__(
             self,
-            texts: List[str],
+            texts: List[str] = None,
             model: str = None,
             optimizer: Any = None,
             loss_func: Any = None,

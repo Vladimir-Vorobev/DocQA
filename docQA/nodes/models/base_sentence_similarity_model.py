@@ -128,7 +128,8 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
             translated_texts,
             top_n_errors=None,
             node=None,
-            eval_step=5
+            eval_step=5,
+            storage_path=''
     ):
         if not top_n_errors or not node:
             top_n_errors = []
@@ -175,7 +176,8 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
                 {
                     'train loss': train_loss_history,
                     'val loss': val_loss_history
-                }, self.name, x_label='epoch', y_label='loss'
+                }, self.name, x_label='epoch', y_label='loss',
+                storage_path=storage_path
             )
 
             if do_evaluation:
@@ -187,14 +189,15 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
                         {
                             f'train top-{n} error': train_top_n_errors_history[n],
                             f'val top-{n} error': val_top_n_errors_history[n]
-                        }, self.name, metric=f'top-{n} error', x_label='epoch', y_label=f'top-{n} error'
+                        }, self.name, metric=f'top-{n} error', x_label='epoch', y_label=f'top-{n} error',
+                        storage_path=storage_path
                     )
 
             # if val_top_1_error <= val_top_1_error_max:
             #     self.best_model = self.model
             #     val_top_1_error_max = val_top_1_error
 
-            with open(f'docs/{self.name}_fitting_results.json', 'w') as w:
+            with open(f'{storage_path}/train_history/{self.name}_fitting_results.json', 'w') as w:
                 w.write(json.dumps({
                     'train_loss_history': train_loss_history,
                     'val_loss_history': val_loss_history,
@@ -214,16 +217,16 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
         loss_sum = 0
 
         for batch in loader:
-            for question, native_context in zip(batch['question'], batch['native_context']):
+            for question, native_context in zip(batch['question'][0], batch['native_context'][0]):
                 validation_data[question] = native_context
 
             question = self.tokenizer(
-                [item for item in batch['question']], return_tensors="pt",
+                [item for item in batch['question'][0]], return_tensors="pt",
                 max_length=self.config.max_question_length, truncation=True, padding="max_length"
             )
 
             context = self.tokenizer(
-                [item for item in batch['context']], return_tensors="pt",
+                [item for item in batch['context'][0]], return_tensors="pt",
                 max_length=self.config.max_length, truncation=True, padding="max_length"
             )
 

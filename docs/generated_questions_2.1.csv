@@ -1,4 +1,4 @@
-,en_question,en_context,retriever_score,ranker_score,rank,native_context,native_question
+,translated_question,translated_context,retriever_score,ranker_score,rank,native_context,native_question
 0,What does the Federal Law do to relations arising from?,2. This Federal Law does not apply to relations arising from:,0.77028227,0.8021521,0,"2. Действие настоящего Федерального закона не распространяется на отношения, возникающие при:","Что делает Федеральный закон с отношениями, возникающими из?"
 1,What does the Federal Law not apply to relations arising from:,2. This Federal Law does not apply to relations arising from:,0.9180303,0.9560128,0,"2. Действие настоящего Федерального закона не распространяется на отношения, возникающие при:","На что Федеральный закон не распространяется на отношения, возникающие из:"
 2,What does the Federal Law not apply to relations arising from?,2. This Federal Law does not apply to relations arising from:,0.88451445,0.9472981,0,"2. Действие настоящего Федерального закона не распространяется на отношения, возникающие при:","На какие отношения, возникающие из чего, не распространяется действие Федерального закона?"

@@ -10,12 +10,15 @@ class TranslatorPipeline(BasePipeline, Translator):
 
     def __init__(
             self,
-            model_name: str,
+            model_name: str = 'facebook/wmt19-ru-en',
+            max_length: int = 512,
+            num_beams: int = 5,
+            batch_size: int = 8,
             device: str = 'cuda',
             name: str = 'translator'
     ):
         BasePipeline.__init__(self)
-        Translator.__init__(self, model_name, device)
+        Translator.__init__(self, model_name, max_length, num_beams, batch_size, device)
 
     def __call__(
             self,

@@ -18,8 +18,8 @@ class CatboostPipeline(BasePipeline):
 
     def __init__(
             self,
-            texts: List[str],
-            native_texts: List[str],
+            texts: List[str] = None,
+            native_texts: List[str] = None,
             weight: float = 1.0,
             return_num: int = 10,
             config_path: str = 'docQA/configs/catboost_config.json',
@@ -74,6 +74,7 @@ class CatboostPipeline(BasePipeline):
             train_previous_outputs,
             val_previous_outputs,
             top_n_errors=None,
+            storage_path=''
     ):
         # assert previous_outputs and previous_outputs[0]['output']['answers'] \
         #        and previous_outputs[0]['output']['answers'][0]['scores'], PipelineError(
@@ -83,7 +84,7 @@ class CatboostPipeline(BasePipeline):
         if not top_n_errors:
             top_n_errors = []
 
-        data = {item['question']: item['native_context'] for item in data}
+        data = {item['question'][0]: item['native_context'][0] for item in data}
 
         train_dataset = self.standardize_input(deepcopy(train_previous_outputs))
         train_dataset = self.add_standard_answers(train_dataset, len(self.texts))
@@ -127,7 +128,7 @@ class CatboostPipeline(BasePipeline):
                     self.modify_output(pred_contexts.copy(), self.native_texts, self.texts), top_n_errors
                 )
 
-                with open(f'docs/{self.name}_fitting_results.json', 'w') as w:
+                with open(f'{storage_path}/train_history/{self.name}_fitting_results.json', 'w') as w:
                     w.write(json.dumps({
                         'train_top_n_errors_history': train_top_n_errors,
                         'val_top_n_errors_history': val_top_n_errors,
