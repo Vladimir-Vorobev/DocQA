@@ -70,11 +70,11 @@ class CatboostPipeline(BasePipeline):
 
     def fit(
             self,
-            data,
-            train_previous_outputs,
-            val_previous_outputs,
-            top_n_errors=None,
-            storage_path=''
+            data: list,
+            train_previous_outputs: PipeOutput,
+            val_previous_outputs: PipeOutput,
+            top_n_errors: list = None,
+            storage_path: str = ''
     ):
         # assert previous_outputs and previous_outputs[0]['output']['answers'] \
         #        and previous_outputs[0]['output']['answers'][0]['scores'], PipelineError(
@@ -136,7 +136,7 @@ class CatboostPipeline(BasePipeline):
 
         return train_top_n_errors, val_top_n_errors
 
-    def _create_dataset(self, df):
+    def _create_dataset(self, df: PipeOutput):
         dataset = []
 
         for item in df:

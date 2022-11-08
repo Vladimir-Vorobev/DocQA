@@ -47,20 +47,7 @@ class Pipeline(BasePipeline):
             f'A node with a name {name} ({pipe_type} pipeline type) is already exists in this pipeline.'
         )
 
-        if pipe_type in ['retriever', 'catboost']:
-            if self.storage.retriever_docs_translated:
-                kwargs['texts'] = self.storage.retriever_docs_translated
-            else:
-                kwargs['texts'] = self.storage.retriever_docs_native
-
-        if pipe_type == 'ranker':
-            if self.storage.ranker_docs_translated:
-                kwargs['texts'] = self.storage.ranker_docs_translated
-            else:
-                kwargs['texts'] = self.storage.ranker_docs_native
-
-        if pipe_type == 'catboost':
-            kwargs['native_texts'] = self.storage.retriever_docs_native
+        kwargs = self._get_update_texts_kwargs(pipe_type, kwargs)
 
         self.nodes[name] = {
             'node': node(name=name, **kwargs),
@@ -68,7 +55,13 @@ class Pipeline(BasePipeline):
             'demo_only': demo_only
         }
 
-    def fit(self, val_size: float = 0.2, top_n_errors: Union[int, List[int]] = [1, 3, 5, 10], evaluate: bool = True, eval_step: int = 5):
+    def fit(
+            self,
+            val_size: float = 0.2,
+            top_n_errors: Union[int, List[int]] = [1, 3, 5, 10],
+            evaluate: bool = True,
+            eval_step: int = 5
+    ):
         if not evaluate:
             top_n_errors = []
 
@@ -90,8 +83,8 @@ class Pipeline(BasePipeline):
             len(self.storage.retriever_docs_native)
         ) if self.storage.val_loader else []
 
-        test_questions = [item['native_question'] for item in self.storage.test_loader]
-        test_contexts = [item['native_context'] for item in self.storage.test_loader]
+        test_questions = [item['native_question'][0] for item in self.storage.test_loader]
+        test_contexts = [item['native_context'][0] for item in self.storage.test_loader]
 
         for node_name in trainable_nodes:
             item = self.nodes[node_name]
@@ -124,7 +117,35 @@ class Pipeline(BasePipeline):
                     'test_top_n_errors_history': test_top_n_errors,
                 }))
 
-    def _call_node(self, node_name, data, is_demo=True, **kwargs):
+    def add_documents(self, docs_links: list):
+        """
+        Add and preprocess new documents to the storage
+        :param docs_links: links to the documents
+        """
+        self.storage.add_documents(docs_links)
+        self.update_pipeline_texts()
+
+    def del_document(self, doc_name: str):
+        """
+        Delete a document from the storage by name
+        :param doc_name: document name in the storage
+        """
+        self.storage.del_document(doc_name)
+        self.update_pipeline_texts()
+
+    def update_pipeline_texts(self):
+        trainable_nodes = [node_name for node_name in self.nodes if not self.nodes[node_name]['is_technical']]
+        for node_name in trainable_nodes:
+            item = self.nodes[node_name]
+            node = item['node']
+            kwargs = self._get_update_texts_kwargs(node.pipe_type)
+
+            node._update_texts(**kwargs)
+
+            if node.pipe_type == 'retriever':
+                node.embeddings = node.encode(kwargs['texts'])
+
+    def _call_node(self, node_name: str, data: PipeOutput, is_demo: bool = True, **kwargs):
         demo_only = self.nodes[node_name]['demo_only']
         
         if is_demo or (not is_demo and not demo_only):

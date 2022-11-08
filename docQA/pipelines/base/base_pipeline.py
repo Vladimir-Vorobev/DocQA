@@ -43,6 +43,28 @@ class BasePipeline(ModifyOutputMixin):
         with open(fine_name, 'wb') as w:
             pickle.dump(self, w)
 
-    def load(self, fine_name):
+    def load(self, fine_name: str):
         with open(fine_name, 'rb') as r:
             self.__dict__ = pickle.load(r).__dict__
+
+    def _get_update_texts_kwargs(self, pipe_type: str, kwargs: dict = {}):
+        if pipe_type in ['retriever', 'catboost']:
+            if self.storage.retriever_docs_translated:
+                kwargs['texts'] = self.storage.retriever_docs_translated
+            else:
+                kwargs['texts'] = self.storage.retriever_docs_native
+
+        if pipe_type == 'ranker':
+            if self.storage.ranker_docs_translated:
+                kwargs['texts'] = self.storage.ranker_docs_translated
+            else:
+                kwargs['texts'] = self.storage.ranker_docs_native
+
+        if pipe_type == 'catboost':
+            kwargs['native_texts'] = self.storage.retriever_docs_native
+
+        return kwargs
+
+    def _update_texts(self, **kwargs):
+        for arg in kwargs:
+            setattr(self, arg, kwargs[arg])

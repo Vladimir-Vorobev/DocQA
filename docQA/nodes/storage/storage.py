@@ -322,9 +322,7 @@ class Storage:
 
     def _unpack_data(self, data: dict):
         """
-
-        :param data:
-        :return:
+        Unpacking data
         """
         unpacked_data = []
 

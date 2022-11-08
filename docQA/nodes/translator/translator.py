@@ -10,7 +10,14 @@ from transformers import (
 
 
 class Translator:
-    def __init__(self, model_name, max_length=512, num_beams=5, batch_size=8, device='cuda'):
+    def __init__(
+            self,
+            model_name: str,
+            max_length: int = 512,
+            num_beams: int = 5,
+            batch_size: int = 8,
+            device: str = 'cuda'
+    ):
         self.model = FSMTForConditionalGeneration.from_pretrained(model_name).to(device)
         self.model.config.max_length = max_length
         self.model.config.num_beams = num_beams
