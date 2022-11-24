@@ -10,7 +10,6 @@ from transformers import (
     AutoModelForQuestionAnswering
 )
 import torch
-import numpy as np
 import pandas as pd
 from tqdm.autonotebook import tqdm
 from typing import Any
@@ -190,7 +189,7 @@ class QuestionGenerator:
         del tokens
         torch.cuda.empty_cache()
 
-        return np.unique([{'question_statement': question[0], 'context': question[1]} for question in questions]).tolist()
+        return [{'question_statement': question[0], 'context': question[1]} for question in set(questions)]
 
     def question_checker(
             self,
