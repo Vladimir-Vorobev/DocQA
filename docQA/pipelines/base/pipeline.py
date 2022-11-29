@@ -83,9 +83,6 @@ class Pipeline(BasePipeline):
             len(self.storage.retriever_docs_native)
         ) if self.storage.val_loader else []
 
-        test_questions = [item['native_question'][0] for item in self.storage.test_loader]
-        test_contexts = [item['native_context'][0] for item in self.storage.test_loader]
-
         for node_name in trainable_nodes:
             item = self.nodes[node_name]
             node = item['node']
@@ -107,6 +104,12 @@ class Pipeline(BasePipeline):
             if node_name != trainable_nodes[-1]:
                 train_previous_outputs = self._call_node(node_name, train_previous_outputs, is_demo=False)
                 val_previous_outputs = self._call_node(node_name, val_previous_outputs, is_demo=False)
+
+        self.run_benchmarks()
+
+    def run_benchmarks(self, top_n_errors: Union[int, List[int]] = [1, 3, 5, 10]):
+        test_questions = [item['native_question'][0] for item in self.storage.test_loader]
+        test_contexts = [item['native_context'][0] for item in self.storage.test_loader]
 
         if test_questions:
             pred_contexts = self.__call__(test_questions, threshold=0)
