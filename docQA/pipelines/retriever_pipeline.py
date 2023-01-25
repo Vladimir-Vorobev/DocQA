@@ -53,11 +53,10 @@ class RetrieverPipeline(BasePipeline, RetrieverEmbeddingsModel):
 
         data_embeddings = self.encode([item['modified_input'] for item in data])
 
-        for index, embedding in zip(range(len(data)), data_embeddings):
+        for index, embedding in enumerate(data_embeddings):
             answers = data[index]['output']['answers']
             for answer_index in range(len(answers)):
                 answer = answers[answer_index]
-
                 score = cosine_similarity(embedding, self.embeddings[answer['index']]) * self.weight
 
                 answer['scores'][f'{self.name}_cos_sim'] = score

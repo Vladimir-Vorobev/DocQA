@@ -24,7 +24,7 @@ class QuestionGenerator:
             pipe: Any = None,
             qa_model: str = 'bert-large-cased-whole-word-masking-finetuned-squad',
             qg_model: str = 'valhalla/t5-base-qg-hl',
-            kw_model: str = 'sentence-transformers/all-MiniLM-L6-v2',
+            kw_model: str = 'sentence-transformers/gtr-t5-large',
             back_translator_model: str = 'facebook/wmt19-en-ru',
 
             qg_model_args: dict = {
@@ -283,8 +283,11 @@ class QuestionGenerator:
         """
         inputs = self.qa_tokenizer(question_statement, doc_text, return_tensors="pt").to('cuda')
 
-        with torch.no_grad():
-            outputs = self.qa_model(**inputs)
+        try:
+            with torch.no_grad():
+                outputs = self.qa_model(**inputs)
+        except:
+            return
 
         answer_start_index = outputs.start_logits.argmax()
         answer_end_index = outputs.end_logits.argmax()

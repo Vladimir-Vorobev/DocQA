@@ -1,5 +1,5 @@
 {
-    "model_name": "sentence-transformers/msmarco-distilbert-multilingual-en-de-v2-tmp-trained-scratch",
+    "model_name": "sentence-transformers/msmarco-distilbert-base-v4",
     "model_path": "",
     "local_files_only": false,
     "lr": 1e-5,

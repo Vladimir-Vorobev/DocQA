@@ -133,8 +133,8 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
 
     def fit(
             self,
-            train_dataset: list,
-            val_dataset: list,
+            train_loader: list, # поменять typing и описание
+            val_loader: list, # поменять typing и описание
             train_previous_outputs: List[PipeOutputElement],
             val_previous_outputs: List[PipeOutputElement],
             native_texts: list,
@@ -164,15 +164,15 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
         self.config.is_training = True
         self.model.train()
 
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=self.config.training_batch_size,
-            shuffle=True, generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
-        )
-
-        val_loader = torch.utils.data.DataLoader(
-            val_dataset, batch_size=self.config.training_batch_size, shuffle=True,
-            generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
-        )
+        # train_loader = torch.utils.data.DataLoader(
+        #     train_dataset, batch_size=self.config.training_batch_size,
+        #     shuffle=True, generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
+        # )
+        #
+        # val_loader = torch.utils.data.DataLoader(
+        #     val_dataset, batch_size=self.config.training_batch_size, shuffle=True,
+        #     generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
+        # ) if val_dataset else []
 
         train_loss_history = []
         val_loss_history = []
@@ -263,16 +263,16 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
         loss_sum = 0
 
         for batch in loader:
-            for question, native_context in zip(batch['question'][0], batch['native_context'][0]):
+            for question, native_context in zip(batch['question'], batch['native_context']):
                 validation_data[question] = native_context
 
             question = self.tokenizer(
-                [item for item in batch['question'][0]], return_tensors="pt",
+                batch['question'], return_tensors="pt",
                 max_length=self.config.max_question_length, truncation=True, padding="max_length"
             )
 
             context = self.tokenizer(
-                [item for item in batch['context'][0]], return_tensors="pt",
+                batch['context'], return_tensors="pt",
                 max_length=self.config.max_length, truncation=True, padding="max_length"
             )
 

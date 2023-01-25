@@ -112,18 +112,27 @@ class Storage:
             ranker_doc_native.extend(self._create_ranker_doc(text))
 
         if self.translator:
-            retriever_doc_translated = [
-                self.translator._translate(text) for text in tqdm(doc, desc='Translating docs paragraphs')
-            ]
-            ranker_doc_translated = [
-                self.translator._translate(text) for text in tqdm(
-                    ranker_doc_native, desc='Grouping and translating docs by paragraphs'
-                )
-            ]
+            doc_copy = []
+            ranker_doc_native_copy = []
+
+            for doc_text, ranker_doc_native_text in zip(tqdm(doc, desc='Translating document'), ranker_doc_native):
+                retriever_translation = self.translator._translate(doc_text)
+                ranker_translation = self.translator._translate(ranker_doc_native_text)
+
+                if retriever_translation.strip() and ranker_translation.strip():
+                    doc_copy.append(doc_text)
+                    ranker_doc_native_copy.append(ranker_doc_native_text)
+                    retriever_doc_translated.append(retriever_translation)
+                    ranker_doc_translated.append(ranker_translation)
+
+            doc, ranker_doc_native = doc_copy, ranker_doc_native_copy
+            retriever_doc_native = doc
   
         return {
-            'docs': doc, 'retriever_docs_native': retriever_doc_native,
-            'ranker_docs_native': ranker_doc_native, 'retriever_docs_translated': retriever_doc_translated,
+            'docs': doc,
+            'retriever_docs_native': retriever_doc_native,
+            'ranker_docs_native': ranker_doc_native,
+            'retriever_docs_translated': retriever_doc_translated,
             'ranker_docs_translated': ranker_doc_translated
         }
 

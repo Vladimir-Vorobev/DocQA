@@ -58,30 +58,38 @@ class Pipeline(BasePipeline):
     def fit(
             self,
             val_size: float = 0.2,
+            batch_size: int = 1,
             top_n_errors: Union[int, List[int]] = [1, 3, 5, 10],
             evaluate: bool = True,
             eval_step: int = 5
     ):
+        if not val_size:
+            evaluate = False
+
         if not evaluate:
             top_n_errors = []
+            val_size = 0
 
         trainable_nodes = [node_name for node_name in self.nodes if not self.nodes[node_name]['is_technical']]
         assert trainable_nodes, PipelineError('None of this pipeline nodes are trainable')
 
-        self.storage.make_data_loaders(val_size=val_size)
+        self.storage.make_data_loaders(val_size=val_size, batch_size=batch_size)
 
         assert self.storage.train_loader, PipelineError('No train data is available')
 
-        # после этого сломается при ranker_sep != ''
-        train_previous_outputs = self.add_standard_answers(
-            self.standardize_input([item['question'] for item in self.storage.train_loader]),
-            len(self.storage.retriever_docs_native)
-        )
+        train_previous_outputs = []
+        for batch in self.storage.train_loader:
+            train_previous_outputs.extend(self.add_standard_answers(
+                self.standardize_input(batch['question']),
+                len(self.storage.retriever_docs_native)
+            ))
 
-        val_previous_outputs = self.add_standard_answers(
-            self.standardize_input([item['question'] for item in self.storage.val_loader]),
-            len(self.storage.retriever_docs_native)
-        ) if self.storage.val_loader else []
+        val_previous_outputs = []
+        for batch in self.storage.val_loader:
+            val_previous_outputs.extend(self.add_standard_answers(
+                self.standardize_input(batch['question']),
+                len(self.storage.retriever_docs_native)
+            ))
 
         for node_name in trainable_nodes:
             item = self.nodes[node_name]
@@ -91,7 +99,8 @@ class Pipeline(BasePipeline):
                 node.fit(
                     self.storage.train_loader, self.storage.val_loader, train_previous_outputs, val_previous_outputs,
                     self.storage.retriever_docs_native, self.storage.retriever_docs_translated,
-                    top_n_errors=top_n_errors, node=node if evaluate else None, eval_step=eval_step, storage_path=self.storage.storage_path
+                    top_n_errors=top_n_errors, node=node if evaluate else None,
+                    eval_step=eval_step, storage_path=self.storage.storage_path
                 )
 
             elif node.pipe_type == 'catboost':
@@ -103,7 +112,8 @@ class Pipeline(BasePipeline):
 
             if node_name != trainable_nodes[-1]:
                 train_previous_outputs = self._call_node(node_name, train_previous_outputs, is_demo=False)
-                val_previous_outputs = self._call_node(node_name, val_previous_outputs, is_demo=False)
+                if evaluate:
+                    val_previous_outputs = self._call_node(node_name, val_previous_outputs, is_demo=False)
 
         self.run_benchmarks()
 
@@ -142,7 +152,6 @@ class Pipeline(BasePipeline):
             item = self.nodes[node_name]
             node = item['node']
             kwargs = self._get_update_texts_kwargs(node.pipe_type)
-
             node._update_texts(**kwargs)
 
             if node.pipe_type == 'retriever':
