@@ -81,8 +81,8 @@ class QuestionGenerator:
     def generate_questions(
             self,
             path_to_save: str = 'dataset.csv',
-            use_ranker_retriever: bool = True,
-            use_qa: bool = False
+            use_ranker_retriever: bool = False,
+            use_qa: bool = True
     ):
         """
         A method to generate artificial dataset for documents from a pipe storage
@@ -217,13 +217,15 @@ class QuestionGenerator:
         if use_ranker_retriever:
             for result in self.ranker_retriever_question_checker(question_statement, doc_text, native_doc, min_rr_threshold, max_rr_threshold):
                 if use_qa:
-                    result = self.qa_question_checker(doc_text, question_statement, question_answer, result=result)
+                    result = self.qa_question_checker(
+                        question_statement, doc_text, native_doc, question_answer, result=result
+                    )
 
                 if result:
                     return result
 
         if use_qa and not use_ranker_retriever:
-            result = self.qa_question_checker(doc_text, question_statement, question_answer)
+            result = self.qa_question_checker(question_statement, doc_text, native_doc, question_answer)
 
             if result:
                 return result
@@ -268,15 +270,17 @@ class QuestionGenerator:
 
     def qa_question_checker(
             self,
-            doc_text: str,
             question_statement: str,
+            doc_text: str,
+            native_doc: str,
             question_answer: str,
             result: dict = None
     ):
         """
         A QA-model algorithm to validate a generated question
-        :param doc_text: a context for which the question has been generated
         :param question_statement: a generated question
+        :param doc_text: a context for which the question has been generated
+        :param native_doc: a native version of doc_text
         :param question_answer: a generated answer for the question statement by QG-model
         :param result: a previous validator result or None
         :return: a dict item to write in a dataset or None
@@ -295,7 +299,6 @@ class QuestionGenerator:
         qa_pred_answer = self.qa_tokenizer.decode(predict_answer_tokens).lower()
         native_question_statement = self.back_translator(question_statement, standardized=False)[0]
         native_question_answer = self.back_translator(question_answer, standardized=False)[0]
-        native_doc = self.back_translator(doc_text, standardized=False)[0]
 
         del inputs
         torch.cuda.empty_cache()

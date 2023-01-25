@@ -164,16 +164,6 @@ class BaseSentenceSimilarityEmbeddingsModel(ModifyOutputMixin):
         self.config.is_training = True
         self.model.train()
 
-        # train_loader = torch.utils.data.DataLoader(
-        #     train_dataset, batch_size=self.config.training_batch_size,
-        #     shuffle=True, generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
-        # )
-        #
-        # val_loader = torch.utils.data.DataLoader(
-        #     val_dataset, batch_size=self.config.training_batch_size, shuffle=True,
-        #     generator=torch.Generator().manual_seed(seed), worker_init_fn=seed_worker
-        # ) if val_dataset else []
-
         train_loss_history = []
         val_loss_history = []
         train_top_n_errors_history = {n: [] for n in top_n_errors}

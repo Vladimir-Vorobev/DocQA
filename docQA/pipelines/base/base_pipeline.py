@@ -16,6 +16,12 @@ class BasePipeline(ModifyOutputMixin):
     def __call__(self, data: Any) -> PipeOutput:
         raise PipelineError(f'Call method is not supported in pipelines with a {self.pipe_type} type.')
 
+    def __getstate__(self):
+        return self.__dict__
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
     @staticmethod
     def standardize_input(data: Union[str, List[str], PipeOutput]) -> PipeOutput:
         if isinstance(data, str):
@@ -39,13 +45,13 @@ class BasePipeline(ModifyOutputMixin):
 
         return data
 
-    def save(self, fine_name: str = 'pipeline.pkl'):
-        with open(fine_name, 'wb') as w:
-            pickle.dump(self, w)
+    def save(self, file_name: str = 'pipeline.pkl'):
+        with open(file_name, 'wb') as w:
+            pickle.dump(self.__getstate__(), w)
 
-    def load(self, fine_name: str):
-        with open(fine_name, 'rb') as r:
-            self.__dict__ = pickle.load(r).__dict__
+    def load(self, file_name: str):
+        with open(file_name, 'rb') as r:
+            self.__setstate__(pickle.load(r))
 
     def _get_update_texts_kwargs(self, pipe_type: str, kwargs: dict = {}):
         if pipe_type in ['retriever', 'catboost']:
