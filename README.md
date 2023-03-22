@@ -8,6 +8,7 @@ Dataset link: [kaggle](https://www.kaggle.com/datasets/vladimirvorobevv/chatgpt-
 Model link: [hf](https://huggingface.co/humarin/chatgpt_paraphraser_on_T5_base)
 
 ### Code examples:
+You can find the detailed instructions in the examples folder
 **General pipeline usage**
 ```python
 from docQA.pipelines import Pipeline
@@ -64,7 +65,38 @@ pipe(input_text)
       'ranker_cos_sim': 0.6855822801589966}}]},
   'modified_input': 'What is Personal Data?'}]
 ```
+**Pipelines fitting**
+DocQA allows you to fit Retriever, Ranker, CatBoost pipelines and a general Pipeline.
+```python
+from docQA.nodes.storage import Storage
+from docQA.pipelines import Pipeline, TranslatorPipeline, RetrieverPipeline, RankerPipeline, CatboostPipeline
 
-### Statistics:
+storage = Storage(storage_name='base_storage', docs_links=['docs/152.txt'])
+storage.add_dataset('docs/train_dataset.csv', 'train_dataset')
+storage.add_dataset('docs/test_dataset.csv', 'benchmark_dataset', is_benchmark=True) # mark dataset as a benchmark
+pipe = Pipeline(storage)
+
+pipe.add_node(TranslatorPipeline, name='translator', is_technical=True, demo_only=True, num_beams=15)
+pipe.add_node(RetrieverPipeline, name='retriever')
+pipe.add_node(RankerPipeline, name='ranker')
+pipe.add_node(CatboostPipeline, name='catboost')
+
+pipe.fit()
+```
+
+**Train dataset generation**
+DocQA allows you to fit Retriever, Ranker, CatBoost pipelines and a general Pipeline.
+```python
+from docQA.nodes.storage import Storage
+from docQA.pipelines import Pipeline, RetrieverPipeline, RankerPipeline, QgPipeline
+
+storage = Storage(storage_name='test_qg', docs_links=['docs/152_article_3.txt']) # creating a storage based on article 9 of 152 federal law of Russia
+pipe = Pipeline(storage)
+pipe.add_node(RetrieverPipeline, name='retriever')
+pipe.add_node(RankerPipeline, name='ranker')
+qg_pipe = QgPipeline(pipe=pipe)
+
+qg_pipe('docs/test_dataset_generation.csv')
+```
 
 
